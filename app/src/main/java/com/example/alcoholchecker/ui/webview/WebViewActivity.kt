@@ -17,6 +17,7 @@ import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -113,7 +114,6 @@ class WebViewActivity : AppCompatActivity() {
         startNfcBridgeServer()
         setupBle()
         setupSerial()
-        setupCall()
 
         binding.webView.loadUrl("$BASE_URL/login")
     }
@@ -333,7 +333,8 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupCall() {
+    private fun startRoomWatcher() {
+        if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
             onNewRoom = { roomId ->
                 Log.d(TAG, "New tenko room: $roomId → showing incoming call screen")
@@ -346,8 +347,34 @@ class WebViewActivity : AppCompatActivity() {
             }
             start()
         }
-
         Log.d(TAG, "RoomWatcher started")
+    }
+
+    private fun stopRoomWatcher() {
+        roomWatcher?.stop()
+        roomWatcher = null
+        Log.d(TAG, "RoomWatcher stopped")
+    }
+
+    inner class AndroidBridge {
+        @JavascriptInterface
+        fun setCallEnabled(enabled: Boolean) {
+            Log.d(TAG, "setCallEnabled: $enabled")
+            runOnUiThread {
+                if (enabled) {
+                    startRoomWatcher()
+                    Toast.makeText(this@WebViewActivity, "着信通知 ON", Toast.LENGTH_SHORT).show()
+                } else {
+                    stopRoomWatcher()
+                    Toast.makeText(this@WebViewActivity, "着信通知 OFF", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun isCallEnabled(): Boolean {
+            return roomWatcher != null
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -373,6 +400,8 @@ class WebViewActivity : AppCompatActivity() {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
         }
+
+        webView.addJavascriptInterface(AndroidBridge(), "Android")
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest?) {
