@@ -9,6 +9,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.keystore
+*.jks
 
 # Symlinks to sibling repos
 alc-app

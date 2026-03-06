@@ -100,6 +100,7 @@ class WebViewActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupWebView()
+        setupSwipeRefresh()
         setupBackNavigation()
         setupNfc()
         startNfcBridgeServer()
@@ -308,19 +309,6 @@ class WebViewActivity : AppCompatActivity() {
             setAcceptThirdPartyCookies(webView, true)
         }
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): Boolean {
-                val url = request?.url?.toString() ?: return false
-                if (url.startsWith(BASE_URL)) {
-                    return false
-                }
-                return false
-            }
-        }
-
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest?) {
                 request ?: return
@@ -372,6 +360,24 @@ class WebViewActivity : AppCompatActivity() {
                 fileChooserCallback = filePathCallback
                 fileChooserLauncher.launch("*/*")
                 return true
+            }
+        }
+    }
+
+    private fun setupSwipeRefresh() {
+        binding.swipeRefresh.setOnRefreshListener {
+            binding.webView.reload()
+        }
+        binding.webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                return false
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                binding.swipeRefresh.isRefreshing = false
             }
         }
     }
