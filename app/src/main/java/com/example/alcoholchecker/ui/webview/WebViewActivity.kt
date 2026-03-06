@@ -31,6 +31,8 @@ import com.example.alcoholchecker.databinding.ActivityWebviewBinding
 import com.example.alcoholchecker.nfc.CardType
 import com.example.alcoholchecker.nfc.NfcBridgeServer
 import com.example.alcoholchecker.nfc.NfcReader
+import com.example.alcoholchecker.call.IncomingCallActivity
+import com.example.alcoholchecker.call.RoomWatcher
 import com.example.alcoholchecker.serial.Fc1200BridgeServer
 import com.example.alcoholchecker.serial.UsbSerialManager
 import org.java_websocket.server.WebSocketServer
@@ -51,6 +53,8 @@ class WebViewActivity : AppCompatActivity() {
 
     private var usbSerialManager: UsbSerialManager? = null
     private var fc1200BridgeServer: Fc1200BridgeServer? = null
+
+    private var roomWatcher: RoomWatcher? = null
 
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
@@ -91,6 +95,9 @@ class WebViewActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "WebViewActivity"
         private const val BASE_URL = "https://alc-app.m-tama-ramu.workers.dev"
+        private const val SIGNALING_URL = "https://alc-signaling.m-tama-ramu.workers.dev"
+        const val ACTION_NAVIGATE_TENKO = "com.example.alcoholchecker.NAVIGATE_TENKO"
+        const val EXTRA_ROOM_ID = "extra_room_id"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -106,6 +113,7 @@ class WebViewActivity : AppCompatActivity() {
         startNfcBridgeServer()
         setupBle()
         setupSerial()
+        setupCall()
 
         binding.webView.loadUrl("$BASE_URL/login")
     }
@@ -154,10 +162,19 @@ class WebViewActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping FC-1200 bridge server", e)
         }
+        roomWatcher?.stop()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        if (intent.action == ACTION_NAVIGATE_TENKO) {
+            val roomId = intent.getStringExtra(EXTRA_ROOM_ID)
+            Log.d(TAG, "Navigating to remote tenko: roomId=$roomId")
+            navigateToRemoteTenko(roomId)
+            return
+        }
+
         if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action ||
             NfcAdapter.ACTION_TAG_DISCOVERED == intent.action ||
             NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action
@@ -165,6 +182,37 @@ class WebViewActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG) ?: return
             handleNfcTag(tag)
+        }
+    }
+
+    private fun navigateToRemoteTenko(roomId: String?) {
+        val webView = binding.webView
+        val currentUrl = webView.url ?: ""
+
+        if (currentUrl.contains(BASE_URL)) {
+            // 既にアプリ内 → JS でタブ切り替え
+            webView.evaluateJavascript("""
+                (function() {
+                    // manager タブ → remote_tenko タブをクリック
+                    var tabs = document.querySelectorAll('button');
+                    for (var i = 0; i < tabs.length; i++) {
+                        if (tabs[i].textContent.includes('運行管理者')) {
+                            tabs[i].click();
+                        }
+                    }
+                    setTimeout(function() {
+                        var tabs2 = document.querySelectorAll('button');
+                        for (var j = 0; j < tabs2.length; j++) {
+                            if (tabs2[j].textContent.includes('遠隔点呼')) {
+                                tabs2[j].click();
+                            }
+                        }
+                    }, 500);
+                })();
+            """.trimIndent(), null)
+        } else {
+            // まだログインページ等 → トップページに遷移
+            webView.loadUrl("$BASE_URL/")
         }
     }
 
@@ -283,6 +331,23 @@ class WebViewActivity : AppCompatActivity() {
             }
             start()
         }
+    }
+
+    private fun setupCall() {
+        roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
+            onNewRoom = { roomId ->
+                Log.d(TAG, "New tenko room: $roomId → showing incoming call screen")
+                val intent = Intent(this@WebViewActivity, IncomingCallActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, "ドライバー点呼要求")
+                    putExtra(IncomingCallActivity.EXTRA_ROOM_ID, roomId)
+                }
+                startActivity(intent)
+            }
+            start()
+        }
+
+        Log.d(TAG, "RoomWatcher started")
     }
 
     @SuppressLint("SetJavaScriptEnabled")

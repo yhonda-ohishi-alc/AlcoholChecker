@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <uses-feature
         android:name="android.hardware.nfc"
@@ -45,6 +47,15 @@
         <activity
             android:name=".ui.iccard.IcCardReadActivity"
             android:launchMode="singleTop" />
+
+        <activity
+            android:name=".call.IncomingCallActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.AlcoholChecker.NoActionBar" />
 
     </application>
 </manifest>

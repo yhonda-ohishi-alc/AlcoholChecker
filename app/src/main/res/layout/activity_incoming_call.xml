@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF1B1B2F"
+    android:padding="32dp">
+
+    <!-- 着信ラベル -->
+    <TextView
+        android:id="@+id/textCallLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="遠隔点呼"
+        android:textColor="#AAFFFFFF"
+        android:textSize="18sp"
+        app:layout_constraintBottom_toTopOf="@id/iconCaller"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_chainStyle="packed"
+        app:layout_constraintVertical_bias="0.3" />
+
+    <!-- 発信者アイコン -->
+    <ImageView
+        android:id="@+id/iconCaller"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_marginTop="24dp"
+        android:src="@android:drawable/ic_menu_call"
+        android:contentDescription="発信者"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textCallLabel"
+        app:tint="#FF4CAF50" />
+
+    <!-- 発信者名 -->
+    <TextView
+        android:id="@+id/textCallerName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="運行管理者"
+        android:textColor="@android:color/white"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/iconCaller" />
+
+    <!-- 応答ボタン -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/buttonAnswer"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="64dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        app:cornerRadius="40dp"
+        app:backgroundTint="#FF4CAF50"
+        app:icon="@android:drawable/ic_menu_call"
+        app:iconGravity="textStart"
+        app:iconPadding="0dp"
+        app:iconSize="36dp"
+        app:iconTint="@android:color/white"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.75"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="応答"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="@id/buttonAnswer"
+        app:layout_constraintStart_toStartOf="@id/buttonAnswer"
+        app:layout_constraintTop_toBottomOf="@id/buttonAnswer" />
+
+    <!-- 拒否ボタン -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/buttonReject"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="64dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        app:cornerRadius="40dp"
+        app:backgroundTint="#FFF44336"
+        app:icon="@android:drawable/ic_menu_close_clear_cancel"
+        app:iconGravity="textStart"
+        app:iconPadding="0dp"
+        app:iconSize="36dp"
+        app:iconTint="@android:color/white"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.25"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="拒否"
+        android:textColor="@android:color/white"
+        android:textSize="14sp"
+        app:layout_constraintEnd_toEndOf="@id/buttonReject"
+        app:layout_constraintStart_toStartOf="@id/buttonReject"
+        app:layout_constraintTop_toBottomOf="@id/buttonReject" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

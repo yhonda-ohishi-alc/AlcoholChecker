@@ -6,4 +6,9 @@
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSecondary">@color/accent</item>
     </style>
+
+    <style name="Theme.AlcoholChecker.NoActionBar" parent="Theme.AlcoholChecker">
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
 </resources>
