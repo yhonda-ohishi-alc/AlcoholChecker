@@ -4,10 +4,12 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
+import android.provider.Settings
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.nfc.NfcAdapter
 import android.nfc.Tag
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.webkit.CookieManager
@@ -24,6 +26,8 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.alcoholchecker.ble.BleBridgeServer
@@ -34,8 +38,11 @@ import com.example.alcoholchecker.nfc.NfcBridgeServer
 import com.example.alcoholchecker.nfc.NfcReader
 import com.example.alcoholchecker.call.IncomingCallActivity
 import com.example.alcoholchecker.call.RoomWatcher
+import com.example.alcoholchecker.screencapture.ScreenCaptureBridgeServer
+import com.example.alcoholchecker.screencapture.ScreenCaptureService
 import com.example.alcoholchecker.serial.Fc1200BridgeServer
 import com.example.alcoholchecker.serial.UsbSerialManager
+import android.media.projection.MediaProjectionManager
 import org.java_websocket.server.WebSocketServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,6 +61,8 @@ class WebViewActivity : AppCompatActivity() {
 
     private var usbSerialManager: UsbSerialManager? = null
     private var fc1200BridgeServer: Fc1200BridgeServer? = null
+
+    private var screenCaptureBridgeServer: ScreenCaptureBridgeServer? = null
 
     private var roomWatcher: RoomWatcher? = null
 
@@ -93,6 +102,35 @@ class WebViewActivity : AppCompatActivity() {
 
     private var pendingPermissionRequest: PermissionRequest? = null
 
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(TAG, "RECORD_AUDIO permission granted: $granted")
+        // Proceed with screen capture regardless of mic permission
+        launchScreenCaptureIntent()
+    }
+
+    private val screenCaptureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val intent = Intent(this, ScreenCaptureService::class.java).apply {
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+            }
+            startForegroundService(intent)
+            binding.webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('screen-capture-result', { detail: { success: true } }))",
+                null
+            )
+        } else {
+            binding.webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('screen-capture-result', { detail: { success: false } }))",
+                null
+            )
+        }
+    }
+
     companion object {
         private const val TAG = "WebViewActivity"
         private const val BASE_URL = "https://alc-app.m-tama-ramu.workers.dev"
@@ -114,6 +152,7 @@ class WebViewActivity : AppCompatActivity() {
         startNfcBridgeServer()
         setupBle()
         setupSerial()
+        setupScreenCapture()
 
         binding.webView.loadUrl("$BASE_URL/login")
     }
@@ -162,6 +201,12 @@ class WebViewActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping FC-1200 bridge server", e)
         }
+        try {
+            screenCaptureBridgeServer?.stop(1000)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping ScreenCapture bridge server", e)
+        }
+        stopScreenCapture()
         roomWatcher?.stop()
     }
 
@@ -333,6 +378,49 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupScreenCapture() {
+        screenCaptureBridgeServer = ScreenCaptureBridgeServer().apply {
+            isReuseAddr = true
+            connectionLostTimeout = 5
+            onCommand = { command ->
+                if (command == "stop") {
+                    runOnUiThread { stopScreenCapture() }
+                }
+            }
+            startSafe(TAG, "ScreenCapture")
+        }
+        ScreenCaptureService.bridgeServer = screenCaptureBridgeServer
+    }
+
+    private fun requestScreenCapture() {
+        // Ensure RECORD_AUDIO permission is granted before starting screen capture
+        // so that getUserMedia({audio}) works for mic in WebRTC
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            launchScreenCaptureIntent()
+        }
+    }
+
+    private fun launchScreenCaptureIntent() {
+        val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            projectionManager.createScreenCaptureIntent(
+                android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()
+            )
+        } else {
+            projectionManager.createScreenCaptureIntent()
+        }
+        screenCaptureLauncher.launch(intent)
+    }
+
+    private fun stopScreenCapture() {
+        stopService(Intent(this, ScreenCaptureService::class.java))
+        Log.d(TAG, "Screen capture stopped")
+    }
+
     private fun startRoomWatcher() {
         if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
@@ -375,10 +463,93 @@ class WebViewActivity : AppCompatActivity() {
         fun isCallEnabled(): Boolean {
             return roomWatcher != null
         }
+
+        @SuppressLint("HardwareIds")
+        @JavascriptInterface
+        fun getDeviceId(): String {
+            return Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+        }
+
+        @JavascriptInterface
+        fun isFingerprintAvailable(): Boolean {
+            val biometricManager = BiometricManager.from(this@WebViewActivity)
+            return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+                    BiometricManager.BIOMETRIC_SUCCESS
+        }
+
+        @JavascriptInterface
+        fun requestFingerprint() {
+            runOnUiThread {
+                showBiometricPrompt()
+            }
+        }
+
+        @JavascriptInterface
+        fun setMicMuted(muted: Boolean) {
+            Log.d(TAG, "setMicMuted: $muted")
+            val audioManager = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            audioManager.isMicrophoneMute = muted
+        }
+
+        @JavascriptInterface
+        fun requestScreenCapture() {
+            Log.d(TAG, "requestScreenCapture")
+            runOnUiThread {
+                this@WebViewActivity.requestScreenCapture()
+            }
+        }
+
+        @JavascriptInterface
+        fun stopScreenCapture() {
+            Log.d(TAG, "stopScreenCapture")
+            runOnUiThread {
+                this@WebViewActivity.stopScreenCapture()
+            }
+        }
+
+        @JavascriptInterface
+        fun isScreenCapturing(): Boolean {
+            return ScreenCaptureService.bridgeServer?.connections?.isNotEmpty() == true
+        }
+    }
+
+    private fun showBiometricPrompt() {
+        val executor = ContextCompat.getMainExecutor(this)
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                Log.d(TAG, "Biometric auth succeeded")
+                binding.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('fingerprint-result', { detail: { success: true } }))",
+                    null
+                )
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                Log.w(TAG, "Biometric auth error: $errorCode $errString")
+                binding.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('fingerprint-result', { detail: { success: false, error: '${errString.toString().replace("'", "\\'")}' } }))",
+                    null
+                )
+            }
+
+            override fun onAuthenticationFailed() {
+                Log.w(TAG, "Biometric auth failed")
+                // 指が一致しなかった場合。ダイアログはまだ表示中なのでイベントは送らない
+            }
+        }
+
+        val prompt = BiometricPrompt(this, executor, callback)
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("指紋認証")
+            .setSubtitle("指紋で本人確認を行います")
+            .setNegativeButtonText("キャンセル")
+            .build()
+        prompt.authenticate(promptInfo)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
+        WebView.setWebContentsDebuggingEnabled(true)
         val webView = binding.webView
 
         webView.settings.apply {
@@ -415,7 +586,7 @@ class WebViewActivity : AppCompatActivity() {
                             androidPermissions.add(Manifest.permission.CAMERA)
                         }
                         PermissionRequest.RESOURCE_AUDIO_CAPTURE -> {
-                            // RECORD_AUDIO is not in manifest yet
+                            androidPermissions.add(Manifest.permission.RECORD_AUDIO)
                         }
                     }
                 }
@@ -472,8 +643,98 @@ class WebViewActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.swipeRefresh.isRefreshing = false
+                injectGetDisplayMediaOverride(view)
             }
         }
+    }
+
+    private fun injectGetDisplayMediaOverride(webView: WebView?) {
+        webView?.evaluateJavascript("""
+            (function() {
+                if (window.__gdmOverridden) return;
+                window.__gdmOverridden = true;
+
+                navigator.mediaDevices.getDisplayMedia = function(constraints) {
+                    return new Promise(function(resolve, reject) {
+                        console.log('[Android] getDisplayMedia called');
+                        function onResult(e) {
+                            window.removeEventListener('screen-capture-result', onResult);
+                            console.log('[Android] screen-capture-result:', e.detail);
+                            if (!e.detail.success) {
+                                reject(new DOMException('Permission denied', 'NotAllowedError'));
+                                return;
+                            }
+                            var ws = new WebSocket('ws://127.0.0.1:8783');
+                            var canvas = document.createElement('canvas');
+                            var ctx = canvas.getContext('2d');
+                            var stream = null;
+                            var settled = false;
+
+                            ws.binaryType = 'arraybuffer';
+
+                            function handleFrame(arrayBuf) {
+                                var blob = new Blob([arrayBuf], {type: 'image/jpeg'});
+                                var url = URL.createObjectURL(blob);
+                                var img = new Image();
+                                img.onload = function() {
+                                    URL.revokeObjectURL(url);
+                                    if (canvas.width !== img.width) canvas.width = img.width;
+                                    if (canvas.height !== img.height) canvas.height = img.height;
+                                    ctx.drawImage(img, 0, 0);
+                                    if (!settled) {
+                                        stream = canvas.captureStream(15);
+                                        var videoTrack = stream.getVideoTracks()[0];
+                                        if (videoTrack) {
+                                            var origStop = videoTrack.stop.bind(videoTrack);
+                                            videoTrack.stop = function() {
+                                                origStop();
+                                                try { ws.send(JSON.stringify({command:'stop'})); } catch(ex) {}
+                                                try { ws.close(); } catch(ex) {}
+                                                if (window.Android) window.Android.stopScreenCapture();
+                                            };
+                                        }
+                                        settled = true;
+                                        console.log('[Android] screen stream ready:', canvas.width, 'x', canvas.height);
+                                        resolve(stream);
+                                    }
+                                };
+                                img.onerror = function() { URL.revokeObjectURL(url); };
+                                img.src = url;
+                            }
+
+                            ws.onmessage = function(event) {
+                                if (event.data instanceof ArrayBuffer) {
+                                    handleFrame(event.data);
+                                } else if (typeof event.data === 'string') {
+                                    try {
+                                        var msg = JSON.parse(event.data);
+                                        console.log('[Android] ws msg:', msg.type);
+                                        if (msg.type === 'stopped' && stream) {
+                                            stream.getTracks().forEach(function(t) { t.stop(); });
+                                        }
+                                    } catch(ex) {}
+                                }
+                            };
+
+                            ws.onerror = function(err) {
+                                console.error('[Android] ws error', err);
+                                if (!settled) reject(new DOMException('Screen capture failed', 'NotAllowedError'));
+                            };
+
+                            ws.onclose = function() {
+                                console.log('[Android] ws closed, settled:', settled);
+                                if (!settled) reject(new DOMException('Screen capture failed', 'NotAllowedError'));
+                            };
+                        }
+
+                        window.addEventListener('screen-capture-result', onResult);
+                        window.Android.requestScreenCapture();
+                    });
+                };
+
+                console.log('[Android] getDisplayMedia override installed');
+            })();
+        """.trimIndent(), null)
     }
 
     private fun setupBackNavigation() {
