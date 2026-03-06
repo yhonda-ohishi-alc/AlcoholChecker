@@ -33,6 +33,7 @@ import com.example.alcoholchecker.nfc.NfcBridgeServer
 import com.example.alcoholchecker.nfc.NfcReader
 import com.example.alcoholchecker.serial.Fc1200BridgeServer
 import com.example.alcoholchecker.serial.UsbSerialManager
+import org.java_websocket.server.WebSocketServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -118,7 +119,8 @@ class WebViewActivity : AppCompatActivity() {
     private fun startNfcBridgeServer() {
         nfcBridgeServer = NfcBridgeServer().apply {
             isReuseAddr = true
-            start()
+            connectionLostTimeout = 5
+            startSafe(TAG, "NFC")
         }
     }
 
@@ -210,6 +212,7 @@ class WebViewActivity : AppCompatActivity() {
         // Start BLE bridge WebSocket server
         bleBridgeServer = BleBridgeServer().apply {
             isReuseAddr = true
+            connectionLostTimeout = 5
             onCommand = { command ->
                 runOnUiThread {
                     when (command) {
@@ -219,7 +222,7 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
             }
-            start()
+            startSafe(TAG, "BLE")
         }
 
         // Setup BLE device manager
@@ -264,12 +267,13 @@ class WebViewActivity : AppCompatActivity() {
     private fun setupSerial() {
         fc1200BridgeServer = Fc1200BridgeServer().apply {
             isReuseAddr = true
+            connectionLostTimeout = 5
             onCommand = { command ->
                 runOnUiThread {
                     usbSerialManager?.handleCommand(command)
                 }
             }
-            start()
+            startSafe(TAG, "FC-1200")
         }
 
         usbSerialManager = UsbSerialManager(this).apply {
@@ -384,4 +388,20 @@ class WebViewActivity : AppCompatActivity() {
             }
         })
     }
+}
+
+/** WebSocket サーバーを安全に起動（ポート競合時はリトライ） */
+private fun WebSocketServer.startSafe(tag: String, name: String, maxRetries: Int = 3) {
+    for (i in 0 until maxRetries) {
+        try {
+            start()
+            return
+        } catch (e: Exception) {
+            Log.w(tag, "$name bridge server start attempt ${i + 1} failed: ${e.message}")
+            if (i < maxRetries - 1) {
+                Thread.sleep(1000)
+            }
+        }
+    }
+    Log.e(tag, "$name bridge server failed to start after $maxRetries attempts")
 }
