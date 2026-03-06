@@ -52,4 +52,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnCheckAfter" />
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnIcCard"
+        android:layout_width="0dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="16dp"
+        android:text="免許証・車検証 IC読み取り"
+        android:textSize="18sp"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btnHistory" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.alcoholchecker.databinding.ActivityHomeBinding
 import com.example.alcoholchecker.ui.check.AlcoholCheckActivity
 import com.example.alcoholchecker.ui.history.HistoryActivity
+import com.example.alcoholchecker.ui.iccard.IcCardReadActivity
 
 class HomeActivity : AppCompatActivity() {
 
@@ -31,6 +32,10 @@ class HomeActivity : AppCompatActivity() {
                 putExtra("USER_ID", userId)
             }
             startActivity(intent)
+        }
+
+        binding.btnIcCard.setOnClickListener {
+            startActivity(Intent(this, IcCardReadActivity::class.java))
         }
     }
 

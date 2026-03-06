@@ -4,7 +4,13 @@
 /.idea
 .DS_Store
 /build
+**/build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Symlinks to sibling repos
+alc-app
+fc1200-wasm
+rust-nfc-bridge
