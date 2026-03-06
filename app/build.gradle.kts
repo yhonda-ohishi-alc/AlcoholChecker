@@ -19,9 +19,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release.keystore")
-            storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: localProperties.getProperty("RELEASE_STORE_PASSWORD")
             keyAlias = "alcoholchecker"
-            keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: localProperties.getProperty("RELEASE_KEY_PASSWORD")
         }
     }
 
