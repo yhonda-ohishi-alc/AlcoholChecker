@@ -76,8 +76,11 @@ dependencies {
     // Location
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
-    // WebSocket Server (NFC bridge)
+    // WebSocket Server (NFC/BLE/Serial bridge)
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
+
+    // USB Serial (FC-1200 alcohol checker)
+    implementation("com.github.mik3y:usb-serial-for-android:3.7.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

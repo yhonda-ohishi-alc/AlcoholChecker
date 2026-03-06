@@ -25,10 +25,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.example.alcoholchecker.ble.BleBridgeServer
+import com.example.alcoholchecker.ble.BleDeviceManager
 import com.example.alcoholchecker.databinding.ActivityWebviewBinding
 import com.example.alcoholchecker.nfc.CardType
 import com.example.alcoholchecker.nfc.NfcBridgeServer
 import com.example.alcoholchecker.nfc.NfcReader
+import com.example.alcoholchecker.serial.Fc1200BridgeServer
+import com.example.alcoholchecker.serial.UsbSerialManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +45,12 @@ class WebViewActivity : AppCompatActivity() {
     private val nfcReader = NfcReader()
     private var nfcBridgeServer: NfcBridgeServer? = null
 
+    private var bleDeviceManager: BleDeviceManager? = null
+    private var bleBridgeServer: BleBridgeServer? = null
+
+    private var usbSerialManager: UsbSerialManager? = null
+    private var fc1200BridgeServer: Fc1200BridgeServer? = null
+
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -48,6 +58,17 @@ class WebViewActivity : AppCompatActivity() {
     ) { uris ->
         fileChooserCallback?.onReceiveValue(uris.toTypedArray())
         fileChooserCallback = null
+    }
+
+    private val blePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            startBleScan()
+        } else {
+            Log.w(TAG, "BLE permissions denied")
+        }
     }
 
     private val cameraPermissionLauncher = registerForActivityResult(
@@ -81,6 +102,8 @@ class WebViewActivity : AppCompatActivity() {
         setupBackNavigation()
         setupNfc()
         startNfcBridgeServer()
+        setupBle()
+        setupSerial()
 
         binding.webView.loadUrl("$BASE_URL/login")
     }
@@ -111,10 +134,22 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        bleDeviceManager?.destroy()
+        usbSerialManager?.destroy()
+        try {
+            bleBridgeServer?.stop(1000)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping BLE bridge server", e)
+        }
         try {
             nfcBridgeServer?.stop(1000)
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping NFC bridge server", e)
+        }
+        try {
+            fc1200BridgeServer?.stop(1000)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping FC-1200 bridge server", e)
         }
     }
 
@@ -171,6 +206,80 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupBle() {
+        // Start BLE bridge WebSocket server
+        bleBridgeServer = BleBridgeServer().apply {
+            isReuseAddr = true
+            onCommand = { command ->
+                runOnUiThread {
+                    when (command) {
+                        "scan" -> startBleScan()
+                        "reset" -> bleDeviceManager?.resetAndRescan()
+                        "stop" -> bleDeviceManager?.stopScan()
+                    }
+                }
+            }
+            start()
+        }
+
+        // Setup BLE device manager
+        bleDeviceManager = BleDeviceManager(this).apply {
+            onDataReceived = { json ->
+                bleBridgeServer?.broadcastData(json)
+            }
+        }
+
+        // Request permissions and start scanning
+        requestBlePermissions()
+    }
+
+    private fun requestBlePermissions() {
+        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        }
+
+        val allGranted = permissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+
+        if (allGranted) {
+            startBleScan()
+        } else {
+            blePermissionLauncher.launch(permissions)
+        }
+    }
+
+    private fun startBleScan() {
+        bleDeviceManager?.startScan()
+    }
+
+    private fun setupSerial() {
+        fc1200BridgeServer = Fc1200BridgeServer().apply {
+            isReuseAddr = true
+            onCommand = { command ->
+                runOnUiThread {
+                    usbSerialManager?.handleCommand(command)
+                }
+            }
+            start()
+        }
+
+        usbSerialManager = UsbSerialManager(this).apply {
+            onEvent = { json ->
+                fc1200BridgeServer?.broadcastData(json)
+            }
+            start()
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
         val webView = binding.webView
@@ -186,6 +295,8 @@ class WebViewActivity : AppCompatActivity() {
             useWideViewPort = true
             loadWithOverviewMode = true
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            // Google OAuth が WebView の UA ("wv") を拒否するため、Chrome UA に偽装
+            userAgentString = userAgentString.replace("; wv", "")
         }
 
         CookieManager.getInstance().apply {
