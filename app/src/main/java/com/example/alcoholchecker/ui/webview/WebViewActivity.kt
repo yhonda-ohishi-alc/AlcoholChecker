@@ -110,6 +110,21 @@ class WebViewActivity : AppCompatActivity() {
         launchScreenCaptureIntent()
     }
 
+    private val phonePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(TAG, "Phone permission granted: $granted")
+        if (granted) {
+            val number = getPhoneNumberInternal()
+            if (number.isNotEmpty()) {
+                binding.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('phone-number', { detail: '${number.replace("'", "\\'")}' }))",
+                    null
+                )
+            }
+        }
+    }
+
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -157,6 +172,7 @@ class WebViewActivity : AppCompatActivity() {
         // App Link (device-claim) で起動された場合はそのURLを開く
         val deepLinkUrl = intent?.data?.toString()
         if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
+            requestPhonePermissionIfNeeded()
             binding.webView.loadUrl(deepLinkUrl)
         } else {
             binding.webView.loadUrl("$BASE_URL/login")
@@ -222,6 +238,7 @@ class WebViewActivity : AppCompatActivity() {
         // App Link で既存アクティビティに戻ってきた場合
         val deepLinkUrl = intent?.data?.toString()
         if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
+            requestPhonePermissionIfNeeded()
             binding.webView.loadUrl(deepLinkUrl)
             return
         }
@@ -434,6 +451,38 @@ class WebViewActivity : AppCompatActivity() {
         Log.d(TAG, "Screen capture stopped")
     }
 
+    @SuppressLint("HardwareIds")
+    private fun getPhoneNumberInternal(): String {
+        return try {
+            val telManager = getSystemService(TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+
+            // Try TelephonyManager.line1Number (works with READ_PHONE_NUMBERS or READ_PHONE_STATE)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS)
+                == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+                == PackageManager.PERMISSION_GRANTED) {
+                @Suppress("DEPRECATION")
+                return telManager.line1Number ?: ""
+            }
+
+            ""
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get phone number", e)
+            ""
+        }
+    }
+
+    private fun requestPhonePermissionIfNeeded() {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_PHONE_NUMBERS
+        } else {
+            Manifest.permission.READ_PHONE_STATE
+        }
+        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            phonePermissionLauncher.launch(permission)
+        }
+    }
+
     private fun startRoomWatcher() {
         if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
@@ -523,6 +572,11 @@ class WebViewActivity : AppCompatActivity() {
         @JavascriptInterface
         fun isScreenCapturing(): Boolean {
             return ScreenCaptureService.bridgeServer?.connections?.isNotEmpty() == true
+        }
+
+        @JavascriptInterface
+        fun getPhoneNumber(): String {
+            return getPhoneNumberInternal()
         }
     }
 
