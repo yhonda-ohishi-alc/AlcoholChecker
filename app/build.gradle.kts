@@ -95,6 +95,9 @@ dependencies {
     // Location
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
+    // Biometric (fingerprint auth)
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // WebSocket Server (NFC/BLE/Serial bridge)
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
 

@@ -131,3 +131,13 @@ cd /home/yutaka/android/AlcoholChecker
 - [ ] テスト実装 (unit / instrumented)
 - [ ] ViewModel 導入 (現在 Activity に直接ロジック)
 - [ ] ユーザー名の取得・表示
+
+## デプロイ
+
+### alc-app (Web/PWA 版)
+
+alc-app のデプロイ時は環境変数が必要なため、SSH 経由で実行すること。
+
+```bash
+ssh yhonda@192.168.11.60
+```
