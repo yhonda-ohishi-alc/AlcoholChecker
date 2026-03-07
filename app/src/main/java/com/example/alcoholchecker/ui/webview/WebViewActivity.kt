@@ -154,7 +154,13 @@ class WebViewActivity : AppCompatActivity() {
         setupSerial()
         setupScreenCapture()
 
-        binding.webView.loadUrl("$BASE_URL/login")
+        // App Link (device-claim) で起動された場合はそのURLを開く
+        val deepLinkUrl = intent?.data?.toString()
+        if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
+            binding.webView.loadUrl(deepLinkUrl)
+        } else {
+            binding.webView.loadUrl("$BASE_URL/login")
+        }
     }
 
     private fun setupNfc() {
@@ -212,6 +218,13 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        // App Link で既存アクティビティに戻ってきた場合
+        val deepLinkUrl = intent?.data?.toString()
+        if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
+            binding.webView.loadUrl(deepLinkUrl)
+            return
+        }
 
         if (intent.action == ACTION_NAVIGATE_TENKO) {
             val roomId = intent.getStringExtra(EXTRA_ROOM_ID)
