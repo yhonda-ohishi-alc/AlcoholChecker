@@ -177,6 +177,7 @@ class WebViewActivity : AppCompatActivity() {
         startHeartbeat()
         requestOverlayPermission()
         requestCameraPermissionIfNeeded()
+        requestNotificationPermissionIfNeeded()
         fetchDeviceSettingsAndAutoStart()
 
         // App Link (device-claim) で起動された場合はそのURLを開く
@@ -216,6 +217,18 @@ class WebViewActivity : AppCompatActivity() {
             != PackageManager.PERMISSION_GRANTED
         ) {
             cameraPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001
+                )
+            }
         }
     }
 
@@ -602,6 +615,8 @@ class WebViewActivity : AppCompatActivity() {
                     // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                     runOnUiThread { startRoomWatcher() }
                     Log.d(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
+                    // FCM トークン登録
+                    registerFcmTokenIfNeeded(deviceId)
                 } else {
                     Log.d(TAG, "status=$status — not starting RoomWatcher")
                 }
@@ -612,6 +627,24 @@ class WebViewActivity : AppCompatActivity() {
                 Log.d(TAG, "Auto-started RoomWatcher from fallback")
             }
         }
+    }
+
+    private fun registerFcmTokenIfNeeded(deviceId: String) {
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { token ->
+                val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+                val registeredToken = prefs.getString("fcm_token_registered", null)
+                if (token != registeredToken) {
+                    Log.w(TAG, "Registering FCM token (token changed or not yet registered)")
+                    com.example.alcoholchecker.fcm.MyFirebaseMessagingService.TokenRegistrar
+                        .register(this, deviceId, token)
+                } else {
+                    Log.w(TAG, "FCM token already registered — skip")
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Failed to get FCM token: ${e.message}")
+            }
     }
 
     private fun startRoomWatcher() {
