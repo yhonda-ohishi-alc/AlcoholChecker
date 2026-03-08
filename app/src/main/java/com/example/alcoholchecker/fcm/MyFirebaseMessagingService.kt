@@ -39,6 +39,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             return
         }
 
+        if (data["type"] == "test_dismiss") {
+            Log.w(TAG, "FCM test_dismiss received — dismissing test call")
+            IncomingCallActivity.dismissForRoom("fcm-test")
+            return
+        }
+
         if (data["type"] != "incoming_call") return
 
         val roomIdsJson = data["room_ids"] ?: return
@@ -87,19 +93,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun showTestNotification() {
-        val channelId = "fcm_test"
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = android.app.NotificationChannel(channelId, "FCMテスト", android.app.NotificationManager.IMPORTANCE_HIGH)
-            getSystemService(android.app.NotificationManager::class.java)?.createNotificationChannel(channel)
+        Log.w(TAG, "Showing test notification as incoming call")
+        val intent = Intent(this, IncomingCallActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, "FCMテスト通知")
+            putExtra(IncomingCallActivity.EXTRA_ROOM_ID, "fcm-test")
+            putExtra(IncomingCallActivity.EXTRA_IS_TEST, true)
         }
-        val notification = android.app.Notification.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("FCMテスト")
-            .setContentText("FCM通知が正常に届きました")
-            .setAutoCancel(true)
-            .build()
-        getSystemService(android.app.NotificationManager::class.java)?.notify(9999, notification)
-        Log.w(TAG, "FCM test notification shown")
+        startActivity(intent)
     }
 
     private fun registerTokenWithBackend(deviceId: String, token: String) {

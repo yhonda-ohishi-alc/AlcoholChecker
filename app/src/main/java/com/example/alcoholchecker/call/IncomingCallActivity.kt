@@ -1,6 +1,7 @@
 package com.example.alcoholchecker.call
 
 import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.media.Ringtone
@@ -15,6 +16,9 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.example.alcoholchecker.databinding.ActivityIncomingCallBinding
 import com.example.alcoholchecker.ui.webview.WebViewActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class IncomingCallActivity : AppCompatActivity() {
 
@@ -22,6 +26,7 @@ class IncomingCallActivity : AppCompatActivity() {
         private const val TAG = "IncomingCallActivity"
         const val EXTRA_CALLER_NAME = "extra_caller_name"
         const val EXTRA_ROOM_ID = "extra_room_id"
+        const val EXTRA_IS_TEST = "extra_is_test"
 
         private val activeInstances = mutableMapOf<String, IncomingCallActivity>()
 
@@ -126,6 +131,14 @@ class IncomingCallActivity : AppCompatActivity() {
     private fun answerCall() {
         Log.d(TAG, "Call answered")
         stopRingtoneAndVibration()
+
+        if (intent.getBooleanExtra(EXTRA_IS_TEST, false)) {
+            Log.d(TAG, "Test call answered — dismissing other devices via FCM")
+            sendFcmDismissTest()
+            finish()
+            return
+        }
+
         val roomId = intent.getStringExtra(EXTRA_ROOM_ID)
         // Notify server so other devices dismiss their incoming call
         if (!roomId.isNullOrEmpty()) {
@@ -140,6 +153,33 @@ class IncomingCallActivity : AppCompatActivity() {
         }
         startActivity(navIntent)
         finish()
+    }
+
+    private fun sendFcmDismissTest() {
+        val prefs = getSharedPreferences("device_settings", Context.MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+        if (deviceId.isNullOrEmpty()) {
+            Log.w(TAG, "No device_id — cannot send FCM dismiss")
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val url = java.net.URL("https://alc-app.m-tama-ramu.workers.dev/api/devices/fcm-dismiss-test")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                conn.doOutput = true
+                val body = """{"device_id":"$deviceId"}"""
+                conn.outputStream.use { it.write(body.toByteArray()) }
+                val code = conn.responseCode
+                Log.w(TAG, "FCM dismiss test: HTTP $code")
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send FCM dismiss test", e)
+            }
+        }
     }
 
     private fun rejectCall() {
