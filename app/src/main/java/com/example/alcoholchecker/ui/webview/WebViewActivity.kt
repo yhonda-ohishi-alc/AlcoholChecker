@@ -533,6 +533,14 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             }
+            onConnectionStateChanged = { connected ->
+                runOnUiThread {
+                    binding.webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('ws-connection-changed', { detail: { connected: $connected } }))",
+                        null
+                    )
+                }
+            }
             start()
         }
         Log.d(TAG, "RoomWatcher started")
@@ -562,6 +570,11 @@ class WebViewActivity : AppCompatActivity() {
         @JavascriptInterface
         fun isCallEnabled(): Boolean {
             return roomWatcher != null
+        }
+
+        @JavascriptInterface
+        fun isCallConnected(): Boolean {
+            return roomWatcher?.isConnected == true
         }
 
         @SuppressLint("HardwareIds")
@@ -615,6 +628,23 @@ class WebViewActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getPhoneNumber(): String {
             return getPhoneNumberInternal()
+        }
+
+        @JavascriptInterface
+        fun setCallSchedule(json: String) {
+            Log.d(TAG, "setCallSchedule: $json")
+            getSharedPreferences("call_settings", MODE_PRIVATE)
+                .edit()
+                .putString("schedule", json)
+                .apply()
+            // RoomWatcher が接続中ならスケジュールを即送信
+            roomWatcher?.sendSchedule()
+        }
+
+        @JavascriptInterface
+        fun getCallSchedule(): String {
+            return getSharedPreferences("call_settings", MODE_PRIVATE)
+                .getString("schedule", "") ?: ""
         }
     }
 

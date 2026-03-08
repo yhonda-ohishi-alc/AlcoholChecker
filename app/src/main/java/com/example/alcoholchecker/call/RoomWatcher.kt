@@ -3,6 +3,7 @@ package com.example.alcoholchecker.call
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
@@ -24,6 +25,9 @@ class RoomWatcher(
     private val handler = Handler(Looper.getMainLooper())
 
     var onNewRoom: ((roomId: String) -> Unit)? = null
+    var onConnectionStateChanged: ((connected: Boolean) -> Unit)? = null
+    var isConnected = false
+        private set
 
     fun start() {
         isRunning = true
@@ -40,16 +44,21 @@ class RoomWatcher(
     private fun connect() {
         if (!isRunning) return
 
+        @Suppress("HardwareIds")
+        val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
         val wsUrl = signalingUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://")
-            .trimEnd('/') + "/watch-rooms"
+            .trimEnd('/') + "/watch-rooms?device_id=$deviceId"
 
         Log.d(TAG, "Connecting to $wsUrl")
 
         wsClient = object : WebSocketClient(URI(wsUrl)) {
             override fun onOpen(handshakedata: ServerHandshake?) {
                 Log.d(TAG, "Connected to watch-rooms")
+                isConnected = true
+                onConnectionStateChanged?.invoke(true)
+                sendSchedule()
             }
 
             override fun onMessage(message: String?) {
@@ -60,6 +69,8 @@ class RoomWatcher(
 
             override fun onClose(code: Int, reason: String?, remote: Boolean) {
                 Log.d(TAG, "Disconnected: code=$code reason=$reason")
+                isConnected = false
+                onConnectionStateChanged?.invoke(false)
                 scheduleReconnect()
             }
 
@@ -89,6 +100,21 @@ class RoomWatcher(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse message", e)
+        }
+    }
+
+    fun sendSchedule() {
+        try {
+            val prefs = context.getSharedPreferences("call_settings", Context.MODE_PRIVATE)
+            val scheduleJson = prefs.getString("schedule", null) ?: return
+            val msg = JSONObject().apply {
+                put("type", "set_schedule")
+                put("schedule", JSONObject(scheduleJson))
+            }
+            wsClient?.send(msg.toString())
+            Log.d(TAG, "Sent schedule: $msg")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send schedule", e)
         }
     }
 
