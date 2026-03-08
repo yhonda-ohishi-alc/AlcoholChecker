@@ -29,6 +29,7 @@ class WatchdogService : Service() {
         private const val HEARTBEAT_TIMEOUT_MS = 60_000L
         private const val CHECK_INTERVAL_MS = 15_000L
         private const val SIGNALING_URL = "https://alc-signaling.m-tama-ramu.workers.dev"
+        private const val API_URL = "https://alc-app.m-tama-ramu.workers.dev"
 
         private val lastHeartbeat = AtomicLong(0L)
 
@@ -98,6 +99,57 @@ class WatchdogService : Service() {
     }
 
     private fun startRoomWatcher() {
+        if (roomWatcher != null) return
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+        if (deviceId.isNullOrEmpty()) {
+            Log.d(TAG, "No device_id — skipping RoomWatcher")
+            return
+        }
+
+        // サーバーから設定を取得して判断
+        scope.launch {
+            try {
+                val response = java.net.URL("$API_URL/api/devices/settings/$deviceId")
+                    .openConnection().let { conn ->
+                        conn as java.net.HttpURLConnection
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        try {
+                            if (conn.responseCode != 200) return@launch
+                            conn.inputStream.bufferedReader().readText()
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }
+
+                val json = org.json.JSONObject(response)
+                val callEnabled = json.optBoolean("call_enabled", false)
+                val status = json.optString("status", "")
+
+                prefs.edit().putBoolean("call_enabled", callEnabled).apply()
+
+                if (!callEnabled || status != "active") {
+                    Log.d(TAG, "call_enabled=$callEnabled status=$status — not starting RoomWatcher")
+                    return@launch
+                }
+
+                val callSchedule = json.optJSONObject("call_schedule")
+                if (callSchedule != null) {
+                    getSharedPreferences("call_settings", MODE_PRIVATE)
+                        .edit().putString("schedule", callSchedule.toString()).apply()
+                }
+                startRoomWatcherInternal()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch settings, fallback to cache: ${e.message}")
+                if (prefs.getBoolean("call_enabled", false)) {
+                    startRoomWatcherInternal()
+                }
+            }
+        }
+    }
+
+    private fun startRoomWatcherInternal() {
         if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
             onNewRoom = { roomId ->

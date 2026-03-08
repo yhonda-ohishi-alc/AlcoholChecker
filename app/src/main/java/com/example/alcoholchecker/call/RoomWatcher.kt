@@ -3,7 +3,6 @@ package com.example.alcoholchecker.call
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import org.java_websocket.client.WebSocketClient
 import org.java_websocket.handshake.ServerHandshake
@@ -44,8 +43,13 @@ class RoomWatcher(
     private fun connect() {
         if (!isRunning) return
 
-        @Suppress("HardwareIds")
-        val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        val prefs = context.getSharedPreferences("device_settings", Context.MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+        if (deviceId.isNullOrEmpty()) {
+            Log.w(TAG, "No device_id in SharedPreferences, cannot connect")
+            scheduleReconnect()
+            return
+        }
         val wsUrl = signalingUrl
             .replace("https://", "wss://")
             .replace("http://", "ws://")

@@ -153,6 +153,7 @@ class WebViewActivity : AppCompatActivity() {
         private const val TAG = "WebViewActivity"
         private const val BASE_URL = "https://alc-app.m-tama-ramu.workers.dev"
         private const val SIGNALING_URL = "https://alc-signaling.m-tama-ramu.workers.dev"
+        private const val API_URL = "https://alc-app.m-tama-ramu.workers.dev"
         const val ACTION_NAVIGATE_TENKO = "com.example.alcoholchecker.NAVIGATE_TENKO"
         const val EXTRA_ROOM_ID = "extra_room_id"
     }
@@ -174,6 +175,8 @@ class WebViewActivity : AppCompatActivity() {
         startWatchdogService()
         startHeartbeat()
         requestOverlayPermission()
+        requestCameraPermissionIfNeeded()
+        fetchDeviceSettingsAndAutoStart()
 
         // App Link (device-claim) で起動された場合はそのURLを開く
         val deepLinkUrl = intent?.data?.toString()
@@ -204,6 +207,14 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 .setNegativeButton("後で", null)
                 .show()
+        }
+    }
+
+    private fun requestCameraPermissionIfNeeded() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            cameraPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
         }
     }
 
@@ -521,6 +532,67 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun fetchDeviceSettingsAndAutoStart() {
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+        if (deviceId.isNullOrEmpty()) {
+            Log.d(TAG, "No device_id — skipping auto-start")
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    val url = java.net.URL("$API_URL/api/devices/settings/$deviceId")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    try {
+                        if (conn.responseCode != 200) {
+                            Log.w(TAG, "Device settings API returned ${conn.responseCode}")
+                            return@withContext null
+                        }
+                        conn.inputStream.bufferedReader().readText()
+                    } finally {
+                        conn.disconnect()
+                    }
+                } ?: return@launch
+
+                val json = org.json.JSONObject(response)
+                val callEnabled = json.optBoolean("call_enabled", false)
+                val status = json.optString("status", "")
+
+                // キャッシュ保存 (オフラインフォールバック用)
+                prefs.edit()
+                    .putBoolean("call_enabled", callEnabled)
+                    .apply()
+
+                if (callEnabled && status == "active") {
+                    // スケジュールを SharedPreferences に保存
+                    val callSchedule = json.optJSONObject("call_schedule")
+                    if (callSchedule != null) {
+                        getSharedPreferences("call_settings", MODE_PRIVATE)
+                            .edit()
+                            .putString("schedule", callSchedule.toString())
+                            .apply()
+                    }
+                    runOnUiThread { startRoomWatcher() }
+                    Log.d(TAG, "Auto-started RoomWatcher based on server settings")
+                } else {
+                    Log.d(TAG, "call_enabled=$callEnabled status=$status — not starting RoomWatcher")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch device settings: ${e.message}")
+                // オフラインフォールバック: キャッシュから判断
+                val cachedEnabled = prefs.getBoolean("call_enabled", false)
+                if (cachedEnabled) {
+                    runOnUiThread { startRoomWatcher() }
+                    Log.d(TAG, "Auto-started RoomWatcher from cached settings")
+                }
+            }
+        }
+    }
+
     private fun startRoomWatcher() {
         if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
@@ -579,8 +651,23 @@ class WebViewActivity : AppCompatActivity() {
 
         @SuppressLint("HardwareIds")
         @JavascriptInterface
-        fun getDeviceId(): String {
+        fun getAndroidId(): String {
             return Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+        }
+
+        @JavascriptInterface
+        fun setDeviceId(deviceId: String) {
+            Log.d(TAG, "setDeviceId: $deviceId")
+            getSharedPreferences("device_settings", MODE_PRIVATE)
+                .edit()
+                .putString("device_id", deviceId)
+                .apply()
+        }
+
+        @JavascriptInterface
+        fun getDeviceId(): String {
+            return getSharedPreferences("device_settings", MODE_PRIVATE)
+                .getString("device_id", "") ?: ""
         }
 
         @JavascriptInterface
