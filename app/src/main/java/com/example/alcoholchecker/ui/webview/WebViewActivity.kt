@@ -42,9 +42,12 @@ import com.example.alcoholchecker.screencapture.ScreenCaptureBridgeServer
 import com.example.alcoholchecker.screencapture.ScreenCaptureService
 import com.example.alcoholchecker.serial.Fc1200BridgeServer
 import com.example.alcoholchecker.serial.UsbSerialManager
+import com.example.alcoholchecker.service.WatchdogService
 import android.media.projection.MediaProjectionManager
 import org.java_websocket.server.WebSocketServer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -168,6 +171,9 @@ class WebViewActivity : AppCompatActivity() {
         setupBle()
         setupSerial()
         setupScreenCapture()
+        startWatchdogService()
+        startHeartbeat()
+        requestOverlayPermission()
 
         // App Link (device-claim) で起動された場合はそのURLを開く
         val deepLinkUrl = intent?.data?.toString()
@@ -176,6 +182,37 @@ class WebViewActivity : AppCompatActivity() {
             binding.webView.loadUrl(deepLinkUrl)
         } else {
             binding.webView.loadUrl("$BASE_URL/login")
+        }
+    }
+
+    private fun startWatchdogService() {
+        val intent = Intent(this, WatchdogService::class.java)
+        startForegroundService(intent)
+    }
+
+    private fun requestOverlayPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("権限の許可が必要です")
+                .setMessage("アプリがクラッシュした際に自動復帰するため、「他のアプリの上に重ねて表示」の権限を許可してください。")
+                .setPositiveButton("設定を開く") { _, _ ->
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:$packageName")
+                    )
+                    startActivity(intent)
+                }
+                .setNegativeButton("後で", null)
+                .show()
+        }
+    }
+
+    private fun startHeartbeat() {
+        lifecycleScope.launch {
+            while (isActive) {
+                WatchdogService.sendHeartbeat()
+                delay(30_000L)
+            }
         }
     }
 
@@ -197,6 +234,7 @@ class WebViewActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         enableNfcForegroundDispatch()
+        WatchdogService.sendHeartbeat()
     }
 
     override fun onPause() {
