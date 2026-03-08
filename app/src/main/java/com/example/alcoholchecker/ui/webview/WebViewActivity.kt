@@ -181,7 +181,7 @@ class WebViewActivity : AppCompatActivity() {
             requestPhonePermissionIfNeeded()
             binding.webView.loadUrl(deepLinkUrl)
         } else {
-            binding.webView.loadUrl("$BASE_URL/login")
+            binding.webView.loadUrl("$BASE_URL/")
         }
     }
 
