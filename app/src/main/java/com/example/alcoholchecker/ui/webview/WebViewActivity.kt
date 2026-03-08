@@ -233,6 +233,7 @@ class WebViewActivity : AppCompatActivity() {
             Log.w(TAG, "NFC not available on this device")
             return
         }
+        // config.xml=false でガイド常時表示、showNfcGuide で3秒表示→forceDisable で消す
     }
 
     private fun setNfcReadingPositionGuide(visible: Boolean) {
@@ -617,6 +618,10 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             }
+            onRoomAnswered = { roomId ->
+                Log.d(TAG, "Room answered: $roomId → dismissing incoming call if showing")
+                IncomingCallActivity.dismissForRoom(roomId)
+            }
             onConnectionStateChanged = { connected ->
                 runOnUiThread {
                     binding.webView.evaluateJavascript(
@@ -637,12 +642,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     inner class AndroidBridge {
-        @JavascriptInterface
-        fun setNfcGuideVisible(visible: Boolean) {
-            Log.e(TAG, "setNfcGuideVisible called: visible=$visible")
-            runOnUiThread { setNfcReadingPositionGuide(visible) }
-        }
-
         @JavascriptInterface
         fun setCallEnabled(enabled: Boolean) {
             Log.d(TAG, "setCallEnabled: $enabled")
@@ -752,6 +751,11 @@ class WebViewActivity : AppCompatActivity() {
         fun getCallSchedule(): String {
             return getSharedPreferences("call_settings", MODE_PRIVATE)
                 .getString("schedule", "") ?: ""
+        }
+
+        @JavascriptInterface
+        fun getDeviceModel(): String {
+            return android.os.Build.MODEL
         }
     }
 

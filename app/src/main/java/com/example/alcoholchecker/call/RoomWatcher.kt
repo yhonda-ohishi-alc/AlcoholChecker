@@ -16,6 +16,10 @@ class RoomWatcher(
     companion object {
         private const val TAG = "RoomWatcher"
         private const val RECONNECT_DELAY_MS = 5000L
+
+        /** Active instance for cross-component access (e.g. IncomingCallActivity) */
+        var activeInstance: RoomWatcher? = null
+            private set
     }
 
     private var wsClient: WebSocketClient? = null
@@ -24,17 +28,20 @@ class RoomWatcher(
     private val handler = Handler(Looper.getMainLooper())
 
     var onNewRoom: ((roomId: String) -> Unit)? = null
+    var onRoomAnswered: ((roomId: String) -> Unit)? = null
     var onConnectionStateChanged: ((connected: Boolean) -> Unit)? = null
     var isConnected = false
         private set
 
     fun start() {
         isRunning = true
+        activeInstance = this
         connect()
     }
 
     fun stop() {
         isRunning = false
+        if (activeInstance === this) activeInstance = null
         handler.removeCallbacksAndMessages(null)
         wsClient?.close()
         wsClient = null
@@ -87,23 +94,46 @@ class RoomWatcher(
     private fun handleMessage(message: String) {
         try {
             val json = JSONObject(message)
-            if (json.optString("type") != "rooms_updated") return
+            when (json.optString("type")) {
+                "rooms_updated" -> {
+                    val roomsArray = json.getJSONArray("rooms")
+                    val newRooms = mutableSetOf<String>()
+                    for (i in 0 until roomsArray.length()) {
+                        newRooms.add(roomsArray.getString(i))
+                    }
 
-            val roomsArray = json.getJSONArray("rooms")
-            val newRooms = mutableSetOf<String>()
-            for (i in 0 until roomsArray.length()) {
-                newRooms.add(roomsArray.getString(i))
-            }
+                    val addedRooms = newRooms - knownRooms
+                    knownRooms = newRooms
 
-            val addedRooms = newRooms - knownRooms
-            knownRooms = newRooms
-
-            for (roomId in addedRooms) {
-                Log.d(TAG, "New room detected: $roomId")
-                onNewRoom?.invoke(roomId)
+                    for (roomId in addedRooms) {
+                        Log.d(TAG, "New room detected: $roomId")
+                        onNewRoom?.invoke(roomId)
+                    }
+                }
+                "room_answered" -> {
+                    val roomId = json.optString("roomId", "")
+                    if (roomId.isNotEmpty()) {
+                        Log.d(TAG, "Room answered by another device: $roomId")
+                        onRoomAnswered?.invoke(roomId)
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse message", e)
+        }
+    }
+
+    /** Notify server that this device answered a call, so other devices can dismiss */
+    fun notifyCallAnswered(roomId: String) {
+        try {
+            val msg = JSONObject().apply {
+                put("type", "call_answered")
+                put("roomId", roomId)
+            }
+            wsClient?.send(msg.toString())
+            Log.d(TAG, "Sent call_answered: $roomId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send call_answered", e)
         }
     }
 

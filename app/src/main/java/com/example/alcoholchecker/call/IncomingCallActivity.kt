@@ -22,6 +22,19 @@ class IncomingCallActivity : AppCompatActivity() {
         private const val TAG = "IncomingCallActivity"
         const val EXTRA_CALLER_NAME = "extra_caller_name"
         const val EXTRA_ROOM_ID = "extra_room_id"
+
+        private val activeInstances = mutableMapOf<String, IncomingCallActivity>()
+
+        fun dismissForRoom(roomId: String) {
+            val activity = activeInstances[roomId]
+            if (activity != null) {
+                Log.d(TAG, "Dismissing incoming call for room: $roomId")
+                activity.runOnUiThread {
+                    activity.stopRingtoneAndVibration()
+                    activity.finish()
+                }
+            }
+        }
     }
 
     private lateinit var binding: ActivityIncomingCallBinding
@@ -35,6 +48,11 @@ class IncomingCallActivity : AppCompatActivity() {
 
         binding = ActivityIncomingCallBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        val roomId = intent.getStringExtra(EXTRA_ROOM_ID) ?: ""
+        if (roomId.isNotEmpty()) {
+            activeInstances[roomId] = this
+        }
 
         val callerName = intent.getStringExtra(EXTRA_CALLER_NAME) ?: "ドライバー"
         binding.textCallerName.text = callerName
@@ -109,6 +127,10 @@ class IncomingCallActivity : AppCompatActivity() {
         Log.d(TAG, "Call answered")
         stopRingtoneAndVibration()
         val roomId = intent.getStringExtra(EXTRA_ROOM_ID)
+        // Notify server so other devices dismiss their incoming call
+        if (!roomId.isNullOrEmpty()) {
+            RoomWatcher.activeInstance?.notifyCallAnswered(roomId)
+        }
         Log.d(TAG, "Navigating to tenko room: $roomId")
 
         val navIntent = Intent(this, WebViewActivity::class.java).apply {
@@ -127,6 +149,10 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        val roomId = intent.getStringExtra(EXTRA_ROOM_ID) ?: ""
+        if (roomId.isNotEmpty()) {
+            activeInstances.remove(roomId)
+        }
         super.onDestroy()
         stopRingtoneAndVibration()
     }

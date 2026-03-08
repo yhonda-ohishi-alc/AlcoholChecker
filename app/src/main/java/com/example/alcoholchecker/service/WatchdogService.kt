@@ -162,6 +162,10 @@ class WatchdogService : Service() {
                 }
                 startActivity(callIntent)
             }
+            onRoomAnswered = { roomId ->
+                Log.d(TAG, "Room answered: $roomId → dismissing incoming call if showing")
+                IncomingCallActivity.dismissForRoom(roomId)
+            }
             start()
         }
         Log.d(TAG, "RoomWatcher started from WatchdogService")
