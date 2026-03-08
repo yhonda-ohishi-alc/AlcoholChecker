@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- FTDI FT-X series (FC-1200 USB-Serial adapter) -->
+    <usb-device vendor-id="1027" product-id="24597" />
+    <!-- FTDI FT232R -->
+    <usb-device vendor-id="1027" product-id="24577" />
+    <!-- FTDI FT232H -->
+    <usb-device vendor-id="1027" product-id="24596" />
+    <!-- FTDI FT2232 -->
+    <usb-device vendor-id="1027" product-id="24592" />
+</resources>

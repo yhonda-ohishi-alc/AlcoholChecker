@@ -190,7 +190,7 @@ class Fc1200Session {
     fun feed(data: String) {
         val lines = parser.feed(data)
         for (line in lines) {
-            Log.d(TAG, "RX: $line")
+            Log.i(TAG, "RX: $line")
             val cmd = IncomingCommand.parse(line)
             if (cmd != null) {
                 dispatchCommand(cmd)
@@ -435,7 +435,7 @@ class Fc1200Session {
     private fun drainResponses() {
         while (responseQueue.isNotEmpty()) {
             val data = responseQueue.removeFirst()
-            Log.d(TAG, "TX: ${String(data).trim()}")
+            Log.i(TAG, "TX: ${String(data).trim()}")
             onSendData?.invoke(data)
         }
     }

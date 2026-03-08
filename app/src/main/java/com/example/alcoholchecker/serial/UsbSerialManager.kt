@@ -81,19 +81,20 @@ class UsbSerialManager(private val context: Context) {
     fun scanAndConnect() {
         val drivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
         if (drivers.isEmpty()) {
-            Log.d(TAG, "No USB serial devices found")
+            Log.i(TAG, "No USB serial devices found")
             emitStatus("status", "No USB serial devices found")
             return
         }
 
-        Log.d(TAG, "Found ${drivers.size} USB serial device(s)")
+        Log.i(TAG, "Found ${drivers.size} USB serial device(s)")
         val driver = drivers[0]
         val device = driver.device
 
         if (usbManager.hasPermission(device)) {
             connectToDevice(device)
         } else {
-            Log.d(TAG, "Requesting USB permission for ${device.deviceName}")
+            Log.i(TAG, "Requesting USB permission for ${device.deviceName} (VID=${device.vendorId}, PID=${device.productId})")
+            emitStatus("permission_requested", "USB permission requested for ${device.deviceName}")
             val intent = Intent(ACTION_USB_PERMISSION).apply {
                 setPackage(context.packageName)
             }
@@ -129,7 +130,7 @@ class UsbSerialManager(private val context: Context) {
             port.setParameters(BAUD_RATE, DATA_BITS, STOP_BITS, PARITY)
             serialPort = port
 
-            Log.d(TAG, "Serial port opened: ${driver.device.deviceName}")
+            Log.i(TAG, "Serial port opened: ${driver.device.deviceName} (VID=${driver.device.vendorId}, PID=${driver.device.productId})")
             emitStatus("connected", "FC-1200 serial connected")
 
             startReading(port)
