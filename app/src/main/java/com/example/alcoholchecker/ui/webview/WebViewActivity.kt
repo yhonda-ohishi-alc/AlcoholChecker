@@ -346,33 +346,54 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun navigateToRemoteTenko(roomId: String?) {
-        val webView = binding.webView
-        val currentUrl = webView.url ?: ""
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
 
-        if (currentUrl.contains(BASE_URL)) {
-            // 既にアプリ内 → JS でタブ切り替え
-            webView.evaluateJavascript("""
-                (function() {
-                    // manager タブ → remote_tenko タブをクリック
-                    var tabs = document.querySelectorAll('button');
-                    for (var i = 0; i < tabs.length; i++) {
-                        if (tabs[i].textContent.includes('運行管理者')) {
-                            tabs[i].click();
+        if (deviceId.isNullOrEmpty()) {
+            // デバイス未登録 → 通常遷移
+            binding.webView.loadUrl("$BASE_URL/")
+            return
+        }
+
+        // デバイス設定を取得して管理者権限チェック
+        lifecycleScope.launch {
+            val hasManagerRole = checkDeviceManagerRole(deviceId)
+            val url = if (hasManagerRole) {
+                if (roomId != null) "$BASE_URL/?mode=incoming_call&room=$roomId"
+                else "$BASE_URL/?mode=incoming_call"
+            } else {
+                "$BASE_URL/"
+            }
+            runOnUiThread { binding.webView.loadUrl(url) }
+        }
+    }
+
+    private suspend fun checkDeviceManagerRole(deviceId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("$API_URL/api/devices/settings/$deviceId")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                try {
+                    if (conn.responseCode != 200) return@withContext false
+                    val json = conn.inputStream.bufferedReader().readText()
+                    val obj = org.json.JSONObject(json)
+                    val roles = obj.optJSONArray("last_login_employee_role")
+                    if (roles != null) {
+                        for (i in 0 until roles.length()) {
+                            val role = roles.getString(i)
+                            if (role == "manager" || role == "admin") return@withContext true
                         }
                     }
-                    setTimeout(function() {
-                        var tabs2 = document.querySelectorAll('button');
-                        for (var j = 0; j < tabs2.length; j++) {
-                            if (tabs2[j].textContent.includes('遠隔点呼')) {
-                                tabs2[j].click();
-                            }
-                        }
-                    }, 500);
-                })();
-            """.trimIndent(), null)
-        } else {
-            // まだログインページ等 → トップページに遷移
-            webView.loadUrl("$BASE_URL/")
+                    false
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "checkDeviceManagerRole failed", e)
+                false
+            }
         }
     }
 
