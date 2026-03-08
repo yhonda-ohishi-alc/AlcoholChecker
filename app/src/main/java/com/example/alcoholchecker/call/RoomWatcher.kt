@@ -48,6 +48,16 @@ class RoomWatcher(
         wsClient = null
     }
 
+    /** FCM 等の外部トリガーから即座に再接続を要求する (スレッドセーフ) */
+    fun reconnectNow() {
+        handler.post {
+            if (!isRunning || isConnected) return@post
+            Log.d(TAG, "Immediate reconnect requested")
+            handler.removeCallbacksAndMessages(null)
+            connect()
+        }
+    }
+
     private fun connect() {
         if (!isRunning) return
 

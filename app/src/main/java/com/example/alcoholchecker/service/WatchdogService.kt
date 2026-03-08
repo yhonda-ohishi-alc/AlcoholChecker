@@ -30,6 +30,7 @@ class WatchdogService : Service() {
         private const val CHECK_INTERVAL_MS = 15_000L
         private const val SIGNALING_URL = "https://alc-signaling.m-tama-ramu.workers.dev"
         private const val API_URL = "https://alc-app.m-tama-ramu.workers.dev"
+        const val ACTION_START_ROOM_WATCHER = "com.example.alcoholchecker.START_ROOM_WATCHER"
 
         private val lastHeartbeat = AtomicLong(0L)
 
@@ -72,6 +73,12 @@ class WatchdogService : Service() {
         if (intent == null) {
             Log.w(TAG, "Restarted by START_STICKY")
             relaunchActivity()
+            startRoomWatcher()
+        }
+
+        // FCM から RoomWatcher 起動要求
+        if (intent?.action == ACTION_START_ROOM_WATCHER) {
+            Log.d(TAG, "RoomWatcher start requested via FCM")
             startRoomWatcher()
         }
 

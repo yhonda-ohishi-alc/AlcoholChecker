@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import com.example.alcoholchecker.call.IncomingCallActivity
 import com.example.alcoholchecker.call.RoomWatcher
+import com.example.alcoholchecker.service.WatchdogService
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         Log.w(TAG, "FCM received: type=${data["type"]}")
+
+        // FCM が届いた = WebSocket が切れている可能性 → 即座に再接続を試行
+        val watcher = RoomWatcher.activeInstance
+        if (watcher != null && !watcher.isConnected) {
+            Log.d(TAG, "WebSocket disconnected — triggering immediate reconnect")
+            watcher.reconnectNow()
+        } else if (watcher == null) {
+            Log.d(TAG, "RoomWatcher not running — requesting start via WatchdogService")
+            val intent = Intent(this, WatchdogService::class.java).apply {
+                action = WatchdogService.ACTION_START_ROOM_WATCHER
+            }
+            startForegroundService(intent)
+        }
 
         if (data["type"] == "test") {
             showTestNotification()
@@ -68,9 +82,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (roomIds.isEmpty()) return
 
         // 重複排除: WebSocket で既に通知済みの room はスキップ
-        val watcher = RoomWatcher.activeInstance
-        val newRoomIds = if (watcher?.isConnected == true) {
-            roomIds.filter { !watcher.hasNotifiedRoom(it) }
+        val currentWatcher = RoomWatcher.activeInstance
+        val newRoomIds = if (currentWatcher?.isConnected == true) {
+            roomIds.filter { !currentWatcher.hasNotifiedRoom(it) }
         } else {
             roomIds
         }
