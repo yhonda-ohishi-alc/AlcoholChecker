@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
+import android.hardware.usb.UsbManager
 import android.provider.Settings
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -298,6 +299,13 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
+        // USB デバイス接続時に再スキャン
+        if (UsbManager.ACTION_USB_DEVICE_ATTACHED == intent.action) {
+            Log.i(TAG, "USB device attached, scanning for serial devices")
+            usbSerialManager?.scanAndConnect()
+            return
+        }
 
         // App Link で既存アクティビティに戻ってきた場合
         val deepLinkUrl = intent?.data?.toString()
