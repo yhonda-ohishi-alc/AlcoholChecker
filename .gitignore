@@ -12,6 +12,9 @@ local.properties
 *.keystore
 *.jks
 
+# Vendor docs
+ForTabletWithNFC_AppDevGuideV1.2/
+
 # Symlinks to sibling repos
 alc-app
 fc1200-wasm
