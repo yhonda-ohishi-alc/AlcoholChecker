@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("com.google.gms.google-services")
 }
 
 import java.util.Properties
@@ -100,6 +101,10 @@ dependencies {
 
     // WebSocket Server (NFC/BLE/Serial bridge)
     implementation("org.java-websocket:Java-WebSocket:1.5.6")
+
+    // Firebase Cloud Messaging
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 
     // USB Serial (FC-1200 alcohol checker)
     implementation("com.github.mik3y:usb-serial-for-android:3.7.3")

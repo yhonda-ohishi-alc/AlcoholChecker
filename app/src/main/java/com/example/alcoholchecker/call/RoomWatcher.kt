@@ -24,6 +24,7 @@ class RoomWatcher(
 
     private var wsClient: WebSocketClient? = null
     private var knownRooms = setOf<String>()
+    private val notifiedRooms = mutableSetOf<String>()
     private var isRunning = false
     private val handler = Handler(Looper.getMainLooper())
 
@@ -103,9 +104,13 @@ class RoomWatcher(
                     }
 
                     val addedRooms = newRooms - knownRooms
+                    val removedRooms = knownRooms - newRooms
                     knownRooms = newRooms
 
+                    // Track notified rooms for FCM dedup
+                    notifiedRooms.removeAll(removedRooms)
                     for (roomId in addedRooms) {
+                        notifiedRooms.add(roomId)
                         Log.d(TAG, "New room detected: $roomId")
                         onNewRoom?.invoke(roomId)
                     }
@@ -122,6 +127,9 @@ class RoomWatcher(
             Log.e(TAG, "Failed to parse message", e)
         }
     }
+
+    /** Check if a room was already notified via WebSocket (for FCM dedup) */
+    fun hasNotifiedRoom(roomId: String): Boolean = roomId in notifiedRooms
 
     /** Notify server that this device answered a call, so other devices can dismiss */
     fun notifyCallAnswered(roomId: String) {
