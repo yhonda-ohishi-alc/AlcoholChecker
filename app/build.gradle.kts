@@ -104,6 +104,9 @@ dependencies {
     // USB Serial (FC-1200 alcohol checker)
     implementation("com.github.mik3y:usb-serial-for-android:3.7.3")
 
+    // KYOCERA NFC extras (NFC reading position guide control)
+    implementation(files("libs/jp.kyocera.nfc_extras.jar"))
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

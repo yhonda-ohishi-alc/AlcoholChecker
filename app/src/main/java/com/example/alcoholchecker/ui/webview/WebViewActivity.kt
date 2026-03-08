@@ -231,6 +231,20 @@ class WebViewActivity : AppCompatActivity() {
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         if (nfcAdapter == null) {
             Log.w(TAG, "NFC not available on this device")
+            return
+        }
+    }
+
+    private fun setNfcReadingPositionGuide(visible: Boolean) {
+        val nfc = nfcAdapter ?: return
+        try {
+            val extra = jp.kyocera.nfc_extras.NfcAdapterExtras()
+            Log.d(TAG, "NFC guide: setting visible=$visible (forceDisable=${!visible})")
+            extra.forceDisableNfcReadingPositionGuide(nfc, !visible)
+            Log.d(TAG, "NFC guide: set successfully")
+        } catch (e: Throwable) {
+            // KYOCERA 以外の端末では IncompatibleClassChangeError 等が発生するため無視
+            Log.w(TAG, "NFC reading position guide not supported", e)
         }
     }
 
@@ -626,6 +640,12 @@ class WebViewActivity : AppCompatActivity() {
 
     inner class AndroidBridge {
         @JavascriptInterface
+        fun setNfcGuideVisible(visible: Boolean) {
+            Log.d(TAG, "setNfcGuideVisible called: visible=$visible")
+            runOnUiThread { setNfcReadingPositionGuide(visible) }
+        }
+
+        @JavascriptInterface
         fun setCallEnabled(enabled: Boolean) {
             Log.d(TAG, "setCallEnabled: $enabled")
             runOnUiThread {
@@ -662,6 +682,8 @@ class WebViewActivity : AppCompatActivity() {
                 .edit()
                 .putString("device_id", deviceId)
                 .apply()
+            // デバイス登録直後に着信設定を取得してRoomWatcherを起動
+            runOnUiThread { fetchDeviceSettingsAndAutoStart() }
         }
 
         @JavascriptInterface
