@@ -15,6 +15,9 @@ local.properties
 # Vendor docs
 ForTabletWithNFC_AppDevGuideV1.2/
 
+# Firebase config (contains API keys)
+app/google-services.json
+
 # Symlinks to sibling repos
 alc-app
 fc1200-wasm
