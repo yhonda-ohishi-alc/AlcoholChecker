@@ -52,6 +52,8 @@ class BleDeviceManager(private val context: Context) {
     private var thermometerGatt: BluetoothGatt? = null
     private var bloodPressureGatt: BluetoothGatt? = null
     private var isScanning = false
+    private var scanRetryCount = 0
+    private val MAX_SCAN_RETRIES = 2
 
     val isBluetoothEnabled: Boolean
         get() = bluetoothAdapter?.isEnabled == true
@@ -90,9 +92,20 @@ class BleDeviceManager(private val context: Context) {
         }
 
         override fun onScanFailed(errorCode: Int) {
-            Log.e(TAG, "Scan failed: errorCode=$errorCode")
+            Log.e(TAG, "Scan failed: errorCode=$errorCode, retry=$scanRetryCount/$MAX_SCAN_RETRIES")
             isScanning = false
-            emitJson("error", "message" to "BLE scan failed (code: $errorCode)")
+            if (errorCode == 2 && scanRetryCount < MAX_SCAN_RETRIES) {
+                scanRetryCount++
+                // Force re-acquire scanner after delay
+                scanner = null
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    Log.d(TAG, "Retrying BLE scan (attempt $scanRetryCount)")
+                    startScan()
+                }, 2000L)
+            } else {
+                scanRetryCount = 0
+                emitJson("error", "message" to "BLE scan failed (code: $errorCode)")
+            }
         }
     }
 
@@ -124,10 +137,12 @@ class BleDeviceManager(private val context: Context) {
         // Try connecting to bonded (paired) devices first
         connectBondedDevices(adapter)
 
+        // Always get a fresh scanner and try to unregister stale callbacks
         scanner = adapter.bluetoothLeScanner ?: run {
             emitJson("error", "message" to "BLE scanner not available")
             return
         }
+        try { scanner?.stopScan(scanCallback) } catch (_: Exception) {}
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
