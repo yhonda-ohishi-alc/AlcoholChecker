@@ -129,22 +129,23 @@ class WatchdogService : Service() {
 
                 prefs.edit().putBoolean("call_enabled", callEnabled).apply()
 
-                if (!callEnabled || status != "active") {
-                    Log.d(TAG, "call_enabled=$callEnabled status=$status — not starting RoomWatcher")
+                // スケジュールを SharedPreferences に保存 (enabled を call_enabled に同期)
+                val callSchedule = json.optJSONObject("call_schedule") ?: org.json.JSONObject()
+                callSchedule.put("enabled", callEnabled)
+                getSharedPreferences("call_settings", MODE_PRIVATE)
+                    .edit().putString("schedule", callSchedule.toString()).apply()
+
+                if (status != "active") {
+                    Log.d(TAG, "status=$status — not starting RoomWatcher")
                     return@launch
                 }
 
-                val callSchedule = json.optJSONObject("call_schedule")
-                if (callSchedule != null) {
-                    getSharedPreferences("call_settings", MODE_PRIVATE)
-                        .edit().putString("schedule", callSchedule.toString()).apply()
-                }
+                // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                 startRoomWatcherInternal()
+                Log.d(TAG, "Started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch settings, fallback to cache: ${e.message}")
-                if (prefs.getBoolean("call_enabled", false)) {
-                    startRoomWatcherInternal()
-                }
+                Log.w(TAG, "Failed to fetch settings, fallback: ${e.message}")
+                startRoomWatcherInternal()
             }
         }
     }

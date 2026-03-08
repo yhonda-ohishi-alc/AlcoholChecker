@@ -239,9 +239,9 @@ class WebViewActivity : AppCompatActivity() {
         val nfc = nfcAdapter ?: return
         try {
             val extra = jp.kyocera.nfc_extras.NfcAdapterExtras()
-            Log.d(TAG, "NFC guide: setting visible=$visible (forceDisable=${!visible})")
+            Log.e(TAG, "NFC guide: setting visible=$visible (forceDisable=${!visible})")
             extra.forceDisableNfcReadingPositionGuide(nfc, !visible)
-            Log.d(TAG, "NFC guide: set successfully")
+            Log.e(TAG, "NFC guide: set successfully")
         } catch (e: Throwable) {
             // KYOCERA 以外の端末では IncompatibleClassChangeError 等が発生するため無視
             Log.w(TAG, "NFC reading position guide not supported", e)
@@ -581,28 +581,26 @@ class WebViewActivity : AppCompatActivity() {
                     .putBoolean("call_enabled", callEnabled)
                     .apply()
 
-                if (callEnabled && status == "active") {
-                    // スケジュールを SharedPreferences に保存
-                    val callSchedule = json.optJSONObject("call_schedule")
-                    if (callSchedule != null) {
-                        getSharedPreferences("call_settings", MODE_PRIVATE)
-                            .edit()
-                            .putString("schedule", callSchedule.toString())
-                            .apply()
-                    }
+                // スケジュールを SharedPreferences に保存 (enabled を call_enabled に同期)
+                val callSchedule = json.optJSONObject("call_schedule") ?: org.json.JSONObject()
+                callSchedule.put("enabled", callEnabled)
+                getSharedPreferences("call_settings", MODE_PRIVATE)
+                    .edit()
+                    .putString("schedule", callSchedule.toString())
+                    .apply()
+
+                if (status == "active") {
+                    // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                     runOnUiThread { startRoomWatcher() }
-                    Log.d(TAG, "Auto-started RoomWatcher based on server settings")
+                    Log.d(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
                 } else {
-                    Log.d(TAG, "call_enabled=$callEnabled status=$status — not starting RoomWatcher")
+                    Log.d(TAG, "status=$status — not starting RoomWatcher")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch device settings: ${e.message}")
-                // オフラインフォールバック: キャッシュから判断
-                val cachedEnabled = prefs.getBoolean("call_enabled", false)
-                if (cachedEnabled) {
-                    runOnUiThread { startRoomWatcher() }
-                    Log.d(TAG, "Auto-started RoomWatcher from cached settings")
-                }
+                // オフラインフォールバック: 常に接続
+                runOnUiThread { startRoomWatcher() }
+                Log.d(TAG, "Auto-started RoomWatcher from fallback")
             }
         }
     }
@@ -641,7 +639,7 @@ class WebViewActivity : AppCompatActivity() {
     inner class AndroidBridge {
         @JavascriptInterface
         fun setNfcGuideVisible(visible: Boolean) {
-            Log.d(TAG, "setNfcGuideVisible called: visible=$visible")
+            Log.e(TAG, "setNfcGuideVisible called: visible=$visible")
             runOnUiThread { setNfcReadingPositionGuide(visible) }
         }
 
