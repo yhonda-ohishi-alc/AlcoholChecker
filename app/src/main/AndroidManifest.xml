@@ -43,6 +43,7 @@
 
         <activity
             android:name=".ui.webview.WebViewActivity"
+            android:configChanges="orientation|screenSize|screenLayout"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
