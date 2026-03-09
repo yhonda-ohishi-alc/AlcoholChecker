@@ -2,8 +2,10 @@ name: Release APK
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
+    paths:
+      - 'app/build.gradle.kts'
 
 permissions:
   contents: write
@@ -14,31 +16,57 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from build.gradle.kts
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=v${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Version: v${VERSION_NAME}"
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.version }} already exists — skipping release"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-java@v4
+        if: steps.check_tag.outputs.exists == 'false'
         with:
           distribution: temurin
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.check_tag.outputs.exists == 'false'
 
       - name: Decode keystore
+        if: steps.check_tag.outputs.exists == 'false'
         run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
       - name: Build release APK
+        if: steps.check_tag.outputs.exists == 'false'
         run: ./gradlew assembleRelease
         env:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
       - name: Generate APK checksum
+        if: steps.check_tag.outputs.exists == 'false'
         run: |
           sha256sum app/build/outputs/apk/release/app-release.apk | awk '{print $1}' > app/build/outputs/apk/release/app-release.apk.sha256
           echo "APK_SHA256=$(cat app/build/outputs/apk/release/app-release.apk.sha256)" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Create tag and GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version }}
           files: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/release/app-release.apk.sha256
