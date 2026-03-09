@@ -6,6 +6,7 @@ on:
       - master
     paths:
       - 'app/build.gradle.kts'
+      - 'app/src/main/AndroidManifest.xml'
 
 permissions:
   contents: write
@@ -84,3 +85,15 @@ jobs:
             ```
             ${{ env.APK_SHA256 }}
             ```
+
+      - name: Deploy APK to GitHub Pages
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages
+          git checkout gh-pages
+          cp app/build/outputs/apk/release/app-release.apk app-release.apk
+          git add app-release.apk
+          git commit -m "Update APK to ${{ steps.version.outputs.version }}"
+          git push origin gh-pages
