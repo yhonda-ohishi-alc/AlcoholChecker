@@ -65,6 +65,23 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
+      - name: Re-sign APK with v1+v2
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          UNSIGNED=/tmp/app-unsigned.apk
+          cp "$APK" "$UNSIGNED"
+          $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --ks app/release.keystore \
+            --ks-key-alias alcoholchecker \
+            --ks-pass "pass:${{ secrets.RELEASE_STORE_PASSWORD }}" \
+            --key-pass "pass:${{ secrets.RELEASE_KEY_PASSWORD }}" \
+            --out "$APK" \
+            "$UNSIGNED"
+          $ANDROID_HOME/build-tools/35.0.0/apksigner verify -v "$APK" | head -8
+
       - name: Generate APK checksum
         if: steps.check_tag.outputs.exists == 'false'
         run: |
@@ -89,11 +106,13 @@ jobs:
       - name: Deploy APK to GitHub Pages
         if: steps.check_tag.outputs.exists == 'false'
         run: |
+          cp app/build/outputs/apk/release/app-release.apk /tmp/app-release.apk
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
           git fetch origin gh-pages
           git checkout gh-pages
-          cp app/build/outputs/apk/release/app-release.apk app-release.apk
+          cp /tmp/app-release.apk app-release.apk
           git add app-release.apk
           git commit -m "Update APK to ${{ steps.version.outputs.version }}"
           git push origin gh-pages
