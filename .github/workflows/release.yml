@@ -74,6 +74,9 @@ jobs:
           $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
+            --v3-signing-enabled false \
+            --v4-signing-enabled false \
+            --min-sdk-version 21 \
             --ks app/release.keystore \
             --ks-key-alias alcoholchecker \
             --ks-pass "pass:${{ secrets.RELEASE_STORE_PASSWORD }}" \
