@@ -184,9 +184,11 @@ class WebViewActivity : AppCompatActivity() {
         setupScreenCapture()
         startWatchdogService()
         startHeartbeat()
+        startBridgeHealthCheck()
         requestOverlayPermission()
         requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
+        autoRegisterDeviceOwner()
         fetchDeviceSettingsAndAutoStart()
 
         // App Link (device-claim) で起動された場合はそのURLを開く
@@ -248,6 +250,83 @@ class WebViewActivity : AppCompatActivity() {
                 delay(30_000L)
             }
         }
+    }
+
+    private fun startBridgeHealthCheck() {
+        lifecycleScope.launch {
+            delay(60_000L) // 起動安定化待ち
+            while (isActive) {
+                delay(30_000L)
+                checkAndRestartBridges()
+            }
+        }
+    }
+
+    private suspend fun checkAndRestartBridges() {
+        data class BridgeInfo(val name: String, val port: Int, val restart: () -> Unit)
+        val bridges = listOf(
+            BridgeInfo("NFC", 9876) { restartNfcBridge() },
+            BridgeInfo("BLE", 9877) { restartBleBridge() },
+            BridgeInfo("FC-1200", 9878) { restartFc1200Bridge() },
+            BridgeInfo("ScreenCapture", 8783) { restartScreenCaptureBridge() },
+        )
+        for (bridge in bridges) {
+            val alive = withContext(Dispatchers.IO) {
+                try {
+                    java.net.Socket().use { s ->
+                        s.connect(java.net.InetSocketAddress("127.0.0.1", bridge.port), 3000)
+                    }
+                    true
+                } catch (_: Exception) { false }
+            }
+            if (!alive) {
+                Log.w(TAG, "${bridge.name} bridge dead, restarting")
+                bridge.restart()
+                binding.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('bridge-restarted', {detail:{bridge:'${bridge.name.lowercase()}'}}))",
+                    null
+                )
+            }
+        }
+    }
+
+    private fun restartNfcBridge() {
+        try { nfcBridgeServer?.stop(1000) } catch (_: Exception) {}
+        startNfcBridgeServer()
+    }
+
+    private fun restartBleBridge() {
+        val oldOnCommand = bleBridgeServer?.onCommand
+        try { bleBridgeServer?.stop(1000) } catch (_: Exception) {}
+        bleBridgeServer = BleBridgeServer().apply {
+            isReuseAddr = true
+            connectionLostTimeout = 5
+            onCommand = oldOnCommand
+            startSafe(TAG, "BLE")
+        }
+    }
+
+    private fun restartFc1200Bridge() {
+        val oldOnCommand = fc1200BridgeServer?.onCommand
+        try { fc1200BridgeServer?.stop(1000) } catch (_: Exception) {}
+        fc1200BridgeServer = Fc1200BridgeServer().apply {
+            isReuseAddr = true
+            connectionLostTimeout = 5
+            onCommand = oldOnCommand
+            startSafe(TAG, "FC-1200")
+        }
+    }
+
+    private fun restartScreenCaptureBridge() {
+        val oldOnCommand = screenCaptureBridgeServer?.onCommand
+        try { screenCaptureBridgeServer?.stop(1000) } catch (_: Exception) {}
+        screenCaptureBridgeServer = ScreenCaptureBridgeServer().apply {
+            isReuseAddr = true
+            connectionLostTimeout = 5
+            onCommand = oldOnCommand
+            startSafe(TAG, "ScreenCapture")
+        }
+        ScreenCaptureService.bridgeServer = screenCaptureBridgeServer
     }
 
     private fun setupNfc() {
@@ -607,6 +686,87 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun autoRegisterDeviceOwner() {
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+
+        // 既に登録済みならスキップ
+        val existingDeviceId = prefs.getString("device_id", null)
+        if (!existingDeviceId.isNullOrEmpty()) return
+
+        // Device Owner でなければスキップ
+        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(packageName)) return
+
+        // プロビジョニング extras から registration_code を取得
+        val registrationCode = prefs.getString("registration_code", null)
+        if (registrationCode.isNullOrEmpty()) {
+            Log.d(TAG, "Device Owner but no registration_code — skipping auto-register")
+            return
+        }
+
+        val deviceName = prefs.getString("device_name", null) ?: android.os.Build.MODEL
+
+        Log.d(TAG, "Device Owner auto-registration starting...")
+
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val url = java.net.URL("$API_URL/api/devices/register/claim")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout = 10_000
+
+                    val body = org.json.JSONObject().apply {
+                        put("registration_code", registrationCode)
+                        put("device_name", deviceName)
+                    }
+                    conn.outputStream.use { it.write(body.toString().toByteArray()) }
+
+                    try {
+                        if (conn.responseCode != 200) {
+                            val errorBody = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
+                            Log.w(TAG, "Device Owner auto-register failed: HTTP ${conn.responseCode} $errorBody")
+                            return@withContext null
+                        }
+                        org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                    } finally {
+                        conn.disconnect()
+                    }
+                } ?: return@launch
+
+                val deviceId = result.optString("device_id", "")
+                val tenantId = result.optString("tenant_id", "")
+                if (deviceId.isEmpty()) {
+                    Log.w(TAG, "Device Owner auto-register: no device_id in response")
+                    return@launch
+                }
+
+                // SharedPreferences に保存
+                prefs.edit()
+                    .putString("device_id", deviceId)
+                    .remove("registration_code") // 使用済みコードを削除
+                    .apply()
+
+                Log.d(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
+
+                // WebView にデバイス登録完了を通知
+                runOnUiThread {
+                    binding.webView.evaluateJavascript(
+                        "window.__deviceOwnerActivated && window.__deviceOwnerActivated('$tenantId','$deviceId')",
+                        null
+                    )
+                    fetchDeviceSettingsAndAutoStart()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Device Owner auto-registration error: ${e.message}")
+                // 次回起動時にリトライ
+            }
+        }
+    }
+
     private fun fetchDeviceSettingsAndAutoStart() {
         val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
         val deviceId = prefs.getString("device_id", null)
@@ -656,6 +816,8 @@ class WebViewActivity : AppCompatActivity() {
                     Log.d(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
                     // FCM トークン登録
                     registerFcmTokenIfNeeded(deviceId)
+                    // バージョン報告
+                    reportVersionToBackend(deviceId)
                 } else {
                     Log.d(TAG, "status=$status — not starting RoomWatcher")
                 }
@@ -684,6 +846,43 @@ class WebViewActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Log.w(TAG, "Failed to get FCM token: ${e.message}")
             }
+    }
+
+    private fun reportVersionToBackend(deviceId: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val info = packageManager.getPackageInfo(packageName, 0)
+                val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    info.longVersionCode.toInt()
+                } else {
+                    @Suppress("DEPRECATION")
+                    info.versionCode
+                }
+                val versionName = info.versionName ?: "unknown"
+
+                val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                val isDeviceOwner = dpm.isDeviceOwnerApp(packageName)
+                val isDevDevice = getSharedPreferences("device_settings", MODE_PRIVATE)
+                    .getBoolean("is_dev_device", false)
+
+                val url = java.net.URL("$API_URL/api/devices/report-version")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PUT"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 10_000
+
+                val body = """{"device_id":"$deviceId","version_code":$versionCode,"version_name":"$versionName","is_device_owner":$isDeviceOwner,"is_dev_device":$isDevDevice}"""
+                conn.outputStream.use { it.write(body.toByteArray()) }
+
+                val code = conn.responseCode
+                Log.d(TAG, "Version reported: HTTP $code (v$versionName/$versionCode, owner=$isDeviceOwner, dev=$isDevDevice)")
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to report version: ${e.message}")
+            }
+        }
     }
 
     private fun startRoomWatcher() {
@@ -836,6 +1035,33 @@ class WebViewActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getDeviceModel(): String {
             return android.os.Build.MODEL
+        }
+
+        @JavascriptInterface
+        fun getAppVersion(): String {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            val code = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                info.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode
+            }
+            return """{"versionCode":$code,"versionName":"${info.versionName}"}"""
+        }
+
+        @JavascriptInterface
+        fun isDeviceOwner(): Boolean {
+            val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            return dpm.isDeviceOwnerApp(packageName)
+        }
+
+        @JavascriptInterface
+        fun getProvisioningInfo(): String {
+            val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+            val deviceId = prefs.getString("device_id", null) ?: ""
+            val isOwner = (getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager)
+                .isDeviceOwnerApp(packageName)
+            return """{"device_id":"$deviceId","is_device_owner":$isOwner}"""
         }
     }
 

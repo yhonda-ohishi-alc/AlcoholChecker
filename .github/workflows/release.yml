@@ -31,8 +31,20 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
+      - name: Generate APK checksum
+        run: |
+          sha256sum app/build/outputs/apk/release/app-release.apk | awk '{print $1}' > app/build/outputs/apk/release/app-release.apk.sha256
+          echo "APK_SHA256=$(cat app/build/outputs/apk/release/app-release.apk.sha256)" >> "$GITHUB_ENV"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/app-release.apk
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
           generate_release_notes: true
+          body: |
+            ## APK Checksum (SHA-256)
+            ```
+            ${{ env.APK_SHA256 }}
+            ```

@@ -1,10 +1,13 @@
 package com.example.alcoholchecker.fcm
 
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.example.alcoholchecker.call.IncomingCallActivity
 import com.example.alcoholchecker.call.RoomWatcher
+import com.example.alcoholchecker.service.OtaUpdateService
 import com.example.alcoholchecker.service.WatchdogService
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -46,6 +49,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 action = WatchdogService.ACTION_START_ROOM_WATCHER
             }
             startForegroundService(intent)
+        }
+
+        if (data["type"] == "app_update") {
+            handleAppUpdate(data)
+            return
         }
 
         if (data["type"] == "test") {
@@ -104,6 +112,41 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             putExtra(IncomingCallActivity.EXTRA_ROOM_ID, roomId)
         }
         startActivity(intent)
+    }
+
+    private fun handleAppUpdate(data: Map<String, String>) {
+        val targetVersionCode = data["version_code"]?.toIntOrNull() ?: 0
+        val targetVersionName = data["version_name"] ?: ""
+
+        // バージョンチェック
+        val currentVersionCode = try {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode
+            }
+        } catch (e: Exception) { 0 }
+
+        if (targetVersionCode > 0 && currentVersionCode >= targetVersionCode) {
+            Log.d(TAG, "app_update: already at version $currentVersionCode, skipping")
+            return
+        }
+
+        // Device Owner チェック
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(packageName)) {
+            Log.d(TAG, "app_update: not device owner, ignoring")
+            return
+        }
+
+        Log.d(TAG, "app_update: starting OTA update (target v$targetVersionName/$targetVersionCode)")
+        val intent = Intent(this, OtaUpdateService::class.java).apply {
+            putExtra("version_code", targetVersionCode)
+            putExtra("version_name", targetVersionName)
+        }
+        startForegroundService(intent)
     }
 
     private fun showTestNotification() {
