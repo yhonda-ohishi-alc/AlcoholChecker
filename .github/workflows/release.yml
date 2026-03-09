@@ -49,6 +49,14 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
+      - name: Decode google-services.json
+        if: steps.check_tag.outputs.exists == 'false'
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > app/google-services.json
+
+      - name: Set versionCode from run_number
+        if: steps.check_tag.outputs.exists == 'false'
+        run: sed -i "s/versionCode = [0-9]*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
+
       - name: Build release APK
         if: steps.check_tag.outputs.exists == 'false'
         run: ./gradlew assembleRelease
