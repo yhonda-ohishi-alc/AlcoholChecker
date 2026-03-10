@@ -74,6 +74,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private var bleDeviceManager: BleDeviceManager? = null
     private var bleBridgeServer: BleBridgeServer? = null
+    private var isAutoRegistering = false
 
     private var usbSerialManager: UsbSerialManager? = null
     private var fc1200BridgeServer: Fc1200BridgeServer? = null
@@ -391,6 +392,12 @@ class WebViewActivity : AppCompatActivity() {
         super.onResume()
         enableNfcForegroundDispatch()
         WatchdogService.sendHeartbeat()
+
+        // プロビジョニング後の初回 onCreate で自動登録が動かなかった場合のリカバリ
+        if (!isAutoRegistering && isDeviceOwnerNeedingRegistration()) {
+            fileLog("onResume: retrying auto-registration")
+            autoRegisterDeviceOwner()
+        }
     }
 
     override fun onPause() {
@@ -745,6 +752,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun autoRegisterDeviceOwner() {
+        isAutoRegistering = true
         val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
 
         // プロビジョニング extras から registration_code を取得
