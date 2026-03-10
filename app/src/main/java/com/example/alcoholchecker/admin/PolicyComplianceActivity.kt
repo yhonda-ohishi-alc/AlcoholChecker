@@ -17,7 +17,7 @@ class PolicyComplianceActivity : Activity() {
 
     private fun fileLog(msg: String) {
         try {
-            val file = File(filesDir, "provisioning.log")
+            val file = File(android.os.Environment.getExternalStorageDirectory(), "provisioning.log")
             file.appendText("${System.currentTimeMillis()} [PolicyCompliance] $msg\n")
         } catch (_: Exception) {}
         Log.w(TAG, msg)
