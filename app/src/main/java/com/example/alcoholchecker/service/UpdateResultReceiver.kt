@@ -26,7 +26,7 @@ class UpdateResultReceiver : BroadcastReceiver() {
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
                 Log.d(TAG, "Package install succeeded")
-                // インストール成功時にバージョンを報告
+                applyDeviceOwnerSettings(context)
                 val versionCode = intent.getIntExtra("version_code", 0)
                 val versionName = intent.getStringExtra("version_name") ?: ""
                 reportVersionToBackend(context, versionCode, versionName)
@@ -76,6 +76,20 @@ class UpdateResultReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to report version after update", e)
             }
+        }
+    }
+
+    private fun applyDeviceOwnerSettings(context: Context) {
+        try {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            if (!dpm.isDeviceOwnerApp(context.packageName)) return
+            val componentName = android.content.ComponentName(
+                context, com.example.alcoholchecker.admin.AppDeviceAdminReceiver::class.java
+            )
+            dpm.setGlobalSetting(componentName, "double_tap_to_wake", "1")
+            Log.d(TAG, "Double tap to wake enabled after update")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply device owner settings: ${e.message}")
         }
     }
 
