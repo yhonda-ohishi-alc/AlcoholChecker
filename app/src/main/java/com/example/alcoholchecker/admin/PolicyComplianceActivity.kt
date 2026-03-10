@@ -1,8 +1,11 @@
 package com.example.alcoholchecker.admin
 
 import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.os.Bundle
 import android.os.PersistableBundle
+import android.provider.Settings
 import android.util.Log
 
 class PolicyComplianceActivity : Activity() {
@@ -48,6 +51,16 @@ class PolicyComplianceActivity : Activity() {
                     deviceName?.let { putString("device_name", it) }
                 }
                 .apply()
+        }
+
+        // USB デバッグを有効化
+        try {
+            val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val componentName = ComponentName(this, AppDeviceAdminReceiver::class.java)
+            dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
+            Log.w(TAG, "USB debugging enabled via Device Owner")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enable USB debugging: ${e.message}")
         }
 
         setResult(RESULT_OK)
