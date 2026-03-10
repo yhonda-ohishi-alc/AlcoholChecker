@@ -62,14 +62,18 @@ class PolicyComplianceActivity : Activity() {
             fileLog("extras bundle is NULL")
         }
 
-        // USB デバッグを有効化
+        // Device Owner 設定
         try {
             val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
             val componentName = ComponentName(this, AppDeviceAdminReceiver::class.java)
+            // USB デバッグを有効化
             dpm.setGlobalSetting(componentName, Settings.Global.ADB_ENABLED, "1")
             fileLog("USB debugging enabled via Device Owner")
+            // ダブルタップで画面ON
+            dpm.setGlobalSetting(componentName, "double_tap_to_wake", "1")
+            fileLog("Double tap to wake enabled via Device Owner")
         } catch (e: Exception) {
-            fileLog("Failed to enable USB debugging: ${e.message}")
+            fileLog("Failed to set Device Owner settings: ${e.message}")
         }
 
         setResult(RESULT_OK)
