@@ -3,6 +3,7 @@ package com.example.alcoholchecker.ui.webview
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.provider.Settings
@@ -185,19 +186,28 @@ class WebViewActivity : AppCompatActivity() {
         startWatchdogService()
         startHeartbeat()
         startBridgeHealthCheck()
-        requestOverlayPermission()
+        val isDeviceOwner = autoGrantPermissionsIfDeviceOwner()
+        if (!isDeviceOwner) {
+            requestOverlayPermission()
+        }
         requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
-        autoRegisterDeviceOwner()
-        fetchDeviceSettingsAndAutoStart()
 
-        // App Link (device-claim) で起動された場合はそのURLを開く
-        val deepLinkUrl = intent?.data?.toString()
-        if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
-            requestPhonePermissionIfNeeded()
-            binding.webView.loadUrl(deepLinkUrl)
+        if (isDeviceOwnerNeedingRegistration()) {
+            // Device Owner 未登録: オーバーレイ表示 → リトライ → 成功後に WebView ロード
+            autoRegisterDeviceOwner()
         } else {
-            binding.webView.loadUrl("$BASE_URL/")
+            // 通常モード or 登録済み Device Owner: 既存フロー
+            fetchDeviceSettingsAndAutoStart()
+
+            // App Link (device-claim) で起動された場合はそのURLを開く
+            val deepLinkUrl = intent?.data?.toString()
+            if (deepLinkUrl != null && deepLinkUrl.contains("/device-claim")) {
+                requestPhonePermissionIfNeeded()
+                binding.webView.loadUrl(deepLinkUrl)
+            } else {
+                binding.webView.loadUrl("$BASE_URL/")
+            }
         }
     }
 
@@ -686,83 +696,147 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun autoGrantPermissionsIfDeviceOwner(): Boolean {
+        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(packageName)) return false
+
+        val componentName = ComponentName(this, com.example.alcoholchecker.admin.AppDeviceAdminReceiver::class.java)
+        val permissions = mutableListOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(Manifest.permission.READ_PHONE_NUMBERS)
+        } else {
+            permissions.add(Manifest.permission.READ_PHONE_STATE)
+        }
+
+        for (perm in permissions) {
+            val granted = dpm.setPermissionGrantState(
+                componentName, packageName, perm,
+                android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
+            )
+            Log.d(TAG, "Auto-grant $perm: $granted")
+        }
+        return true
+    }
+
+    private fun isDeviceOwnerNeedingRegistration(): Boolean {
+        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(packageName)) return false
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+        return deviceId.isNullOrEmpty()
+    }
+
     private fun autoRegisterDeviceOwner() {
         val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
-
-        // 既に登録済みならスキップ
-        val existingDeviceId = prefs.getString("device_id", null)
-        if (!existingDeviceId.isNullOrEmpty()) return
-
-        // Device Owner でなければスキップ
-        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-        if (!dpm.isDeviceOwnerApp(packageName)) return
 
         // プロビジョニング extras から registration_code を取得
         val registrationCode = prefs.getString("registration_code", null)
         if (registrationCode.isNullOrEmpty()) {
-            Log.d(TAG, "Device Owner but no registration_code — skipping auto-register")
+            Log.d(TAG, "Device Owner but no registration_code — loading WebView as fallback")
+            binding.webView.loadUrl("$BASE_URL/")
+            fetchDeviceSettingsAndAutoStart()
             return
         }
 
         val deviceName = prefs.getString("device_name", null) ?: android.os.Build.MODEL
 
+        // 登録オーバーレイ表示
+        binding.registrationOverlay.visibility = android.view.View.VISIBLE
+        binding.registrationStatusText.text = "デバイス登録中..."
+
         Log.d(TAG, "Device Owner auto-registration starting...")
 
         lifecycleScope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    val url = java.net.URL("$API_URL/api/devices/register/claim")
-                    val conn = url.openConnection() as java.net.HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.connectTimeout = 10_000
-                    conn.readTimeout = 10_000
+            var attempt = 0
+            val maxAttempts = 10
+            var delayMs = 2000L
 
-                    val body = org.json.JSONObject().apply {
-                        put("registration_code", registrationCode)
-                        put("device_name", deviceName)
-                    }
-                    conn.outputStream.use { it.write(body.toString().toByteArray()) }
-
-                    try {
-                        if (conn.responseCode != 200) {
-                            val errorBody = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
-                            Log.w(TAG, "Device Owner auto-register failed: HTTP ${conn.responseCode} $errorBody")
-                            return@withContext null
-                        }
-                        org.json.JSONObject(conn.inputStream.bufferedReader().readText())
-                    } finally {
-                        conn.disconnect()
-                    }
-                } ?: return@launch
-
-                val deviceId = result.optString("device_id", "")
-                val tenantId = result.optString("tenant_id", "")
-                if (deviceId.isEmpty()) {
-                    Log.w(TAG, "Device Owner auto-register: no device_id in response")
-                    return@launch
-                }
-
-                // SharedPreferences に保存
-                prefs.edit()
-                    .putString("device_id", deviceId)
-                    .remove("registration_code") // 使用済みコードを削除
-                    .apply()
-
-                Log.d(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
-
-                // WebView にデバイス登録完了を通知
+            while (attempt < maxAttempts) {
+                attempt++
+                Log.d(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
                 runOnUiThread {
-                    binding.webView.evaluateJavascript(
-                        "window.__deviceOwnerActivated && window.__deviceOwnerActivated('$tenantId','$deviceId')",
-                        null
-                    )
-                    fetchDeviceSettingsAndAutoStart()
+                    binding.registrationStatusText.text = "デバイス登録中... ($attempt/$maxAttempts)"
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Device Owner auto-registration error: ${e.message}")
-                // 次回起動時にリトライ
+
+                try {
+                    val result = withContext(Dispatchers.IO) {
+                        val url = java.net.URL("$API_URL/api/devices/register/claim")
+                        val conn = url.openConnection() as java.net.HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.connectTimeout = 10_000
+                        conn.readTimeout = 10_000
+
+                        val body = org.json.JSONObject().apply {
+                            put("registration_code", registrationCode)
+                            put("device_name", deviceName)
+                        }
+                        conn.outputStream.use { it.write(body.toString().toByteArray()) }
+
+                        try {
+                            if (conn.responseCode != 200) {
+                                val errorBody = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
+                                Log.w(TAG, "Auto-register attempt $attempt failed: HTTP ${conn.responseCode} $errorBody")
+                                return@withContext null
+                            }
+                            org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }
+
+                    if (result != null) {
+                        val deviceId = result.optString("device_id", "")
+                        val tenantId = result.optString("tenant_id", "")
+                        if (deviceId.isNotEmpty()) {
+                            // 登録成功
+                            prefs.edit()
+                                .putString("device_id", deviceId)
+                                .remove("registration_code")
+                                .apply()
+
+                            Log.d(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
+
+                            runOnUiThread {
+                                binding.registrationOverlay.visibility = android.view.View.GONE
+                                binding.webView.loadUrl("$BASE_URL/")
+                                binding.webView.evaluateJavascript(
+                                    "window.__deviceOwnerActivated && window.__deviceOwnerActivated('$tenantId','$deviceId')",
+                                    null
+                                )
+                                fetchDeviceSettingsAndAutoStart()
+                            }
+                            return@launch // 成功 — ループ終了
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Auto-registration attempt $attempt error: ${e.message}")
+                }
+
+                // 指数バックオフ: 2s, 4s, 8s, 16s, 30s cap
+                delay(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(30_000L)
+            }
+
+            // 全リトライ失敗
+            Log.e(TAG, "Device Owner auto-registration failed after $maxAttempts attempts")
+            runOnUiThread {
+                binding.registrationStatusText.text = "デバイス登録に失敗しました\nアプリを再起動してください"
+                // 5秒後にフォールバックで WebView 読み込み
+                binding.root.postDelayed({
+                    binding.registrationOverlay.visibility = android.view.View.GONE
+                    binding.webView.loadUrl("$BASE_URL/")
+                }, 5000)
             }
         }
     }
