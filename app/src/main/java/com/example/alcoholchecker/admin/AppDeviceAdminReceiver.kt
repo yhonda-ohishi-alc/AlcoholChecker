@@ -24,12 +24,25 @@ class AppDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
         Log.i(TAG, "Profile provisioning complete")
+        Log.i(TAG, "Intent action: ${intent.action}")
+        Log.i(TAG, "Intent extras keys: ${intent.extras?.keySet()?.toList()}")
+        intent.extras?.keySet()?.forEach { key ->
+            Log.i(TAG, "Intent extra [$key] = ${intent.extras?.get(key)} (type: ${intent.extras?.get(key)?.javaClass?.name})")
+        }
 
         // QR プロビジョニング時の admin extras を読み取る
         // PersistableBundle で渡されるため getBundleExtra() ではなく getParcelableExtra() を使用
-        val extras = intent.getParcelableExtra<android.os.PersistableBundle>(
-            android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE
-        )
+        val extras = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(
+                android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE,
+                android.os.PersistableBundle::class.java
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(
+                android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE
+            )
+        }
         Log.i(TAG, "Provisioning extras bundle: $extras")
         val isDevDevice = extras?.getString("is_dev_device")?.toBoolean() ?: false
         val registrationCode = extras?.getString("registration_code")
