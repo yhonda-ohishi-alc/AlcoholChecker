@@ -1,6 +1,5 @@
 package com.example.alcoholchecker.fcm
 
-import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -131,13 +130,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         if (targetVersionCode > 0 && currentVersionCode >= targetVersionCode) {
             Log.d(TAG, "app_update: already at version $currentVersionCode, skipping")
-            return
-        }
-
-        // Device Owner チェック
-        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        if (!dpm.isDeviceOwnerApp(packageName)) {
-            Log.d(TAG, "app_update: not device owner, ignoring")
             return
         }
 
