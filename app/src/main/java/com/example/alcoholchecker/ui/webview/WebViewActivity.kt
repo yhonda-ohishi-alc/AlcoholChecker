@@ -596,7 +596,6 @@ class WebViewActivity : AppCompatActivity() {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.ACCESS_FINE_LOCATION
             )
         } else {
             arrayOf(
@@ -722,8 +721,10 @@ class WebViewActivity : AppCompatActivity() {
         val permissions = mutableListOf(
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.ACCESS_FINE_LOCATION,
         )
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
@@ -1264,7 +1265,7 @@ class WebViewActivity : AppCompatActivity() {
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
             ) {
-                callback?.invoke(origin, true, false)
+                callback?.invoke(origin, true, true)
             }
 
             override fun onShowFileChooser(
