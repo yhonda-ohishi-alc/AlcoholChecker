@@ -119,3 +119,14 @@ jobs:
           git add app-release.apk
           git commit -m "Update APK to ${{ steps.version.outputs.version }}"
           git push origin gh-pages
+
+      - name: Trigger OTA update for dev devices
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          VERSION_NAME=$(echo "${{ steps.version.outputs.version }}" | sed 's/^v//')
+          curl -s -X POST "https://alc-app.m-tama-ramu.workers.dev/api/devices/trigger-update-dev" \
+            -H "Content-Type: application/json" \
+            -H "X-Internal-Secret: ${{ secrets.FCM_INTERNAL_SECRET }}" \
+            -d "{\"version_code\":${{ github.run_number }},\"version_name\":\"${VERSION_NAME}\"}" \
+            | tee /dev/stderr | jq .
+          echo "OTA trigger sent for dev devices (v${VERSION_NAME}/${{ github.run_number }})"

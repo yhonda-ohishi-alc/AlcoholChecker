@@ -83,6 +83,8 @@ class WebViewActivity : AppCompatActivity() {
 
     private var roomWatcher: RoomWatcher? = null
 
+    private var pendingLocalStorage: Map<String, String>? = null
+
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
     private val fileChooserLauncher = registerForActivityResult(
@@ -831,10 +833,10 @@ class WebViewActivity : AppCompatActivity() {
 
                             runOnUiThread {
                                 binding.registrationOverlay.visibility = android.view.View.GONE
-                                // ページロード前に localStorage をセット
-                                binding.webView.evaluateJavascript(
-                                    "localStorage.setItem('alc_device_tenant_id','$tenantId');localStorage.setItem('alc_device_id','$deviceId');",
-                                    null
+                                // onPageFinished で正しいオリジンで localStorage をセットする
+                                pendingLocalStorage = mapOf(
+                                    "alc_device_tenant_id" to tenantId,
+                                    "alc_device_id" to deviceId
                                 )
                                 binding.webView.loadUrl("$BASE_URL/")
                                 fetchDeviceSettingsAndAutoStart()
@@ -1293,6 +1295,14 @@ class WebViewActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 binding.swipeRefresh.isRefreshing = false
                 injectGetDisplayMediaOverride(view)
+                pendingLocalStorage?.let { data ->
+                    val js = data.entries.joinToString(";") {
+                        "localStorage.setItem('${it.key}','${it.value}')"
+                    }
+                    view?.evaluateJavascript("$js;location.reload();", null)
+                    pendingLocalStorage = null
+                    fileLog("localStorage injected in onPageFinished: ${data.keys}")
+                }
             }
         }
     }
