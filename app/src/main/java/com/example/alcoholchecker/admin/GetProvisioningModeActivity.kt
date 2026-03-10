@@ -16,7 +16,7 @@ class GetProvisioningModeActivity : Activity() {
 
     private fun fileLog(msg: String) {
         try {
-            val file = File(android.os.Environment.getExternalStorageDirectory(), "provisioning.log")
+            val file = File(getExternalFilesDir(null), "provisioning.log")
             file.appendText("${System.currentTimeMillis()} [GetProvisioningMode] $msg\n")
         } catch (_: Exception) {}
         Log.w(TAG, msg)

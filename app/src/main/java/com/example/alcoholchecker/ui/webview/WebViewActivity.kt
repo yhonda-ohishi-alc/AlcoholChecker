@@ -60,7 +60,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun fileLog(msg: String) {
         try {
-            val file = java.io.File(android.os.Environment.getExternalStorageDirectory(), "provisioning.log")
+            val file = java.io.File(getExternalFilesDir(null), "provisioning.log")
             file.appendText("${System.currentTimeMillis()} [WebViewActivity] $msg\n")
         } catch (_: Exception) {}
         Log.w(TAG, msg)
