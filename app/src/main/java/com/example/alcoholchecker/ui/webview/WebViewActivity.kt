@@ -780,7 +780,7 @@ class WebViewActivity : AppCompatActivity() {
 
             while (attempt < maxAttempts) {
                 attempt++
-                Log.w(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
+                fileLog("attempt $attempt/$maxAttempts")
                 runOnUiThread {
                     binding.registrationStatusText.text = "デバイス登録中... ($attempt/$maxAttempts)"
                 }
@@ -802,12 +802,15 @@ class WebViewActivity : AppCompatActivity() {
                         conn.outputStream.use { it.write(body.toString().toByteArray()) }
 
                         try {
-                            if (conn.responseCode != 200) {
+                            val code = conn.responseCode
+                            if (code != 200) {
                                 val errorBody = try { conn.errorStream?.bufferedReader()?.readText() } catch (_: Exception) { null }
-                                Log.w(TAG, "Auto-register attempt $attempt failed: HTTP ${conn.responseCode} $errorBody")
+                                fileLog("attempt $attempt failed: HTTP $code $errorBody")
                                 return@withContext null
                             }
-                            org.json.JSONObject(conn.inputStream.bufferedReader().readText())
+                            val responseText = conn.inputStream.bufferedReader().readText()
+                            fileLog("attempt $attempt response: $responseText")
+                            org.json.JSONObject(responseText)
                         } finally {
                             conn.disconnect()
                         }
@@ -816,6 +819,7 @@ class WebViewActivity : AppCompatActivity() {
                     if (result != null) {
                         val deviceId = result.optString("device_id", "")
                         val tenantId = result.optString("tenant_id", "")
+                        fileLog("parsed: device_id=$deviceId, tenant_id=$tenantId")
                         if (deviceId.isNotEmpty()) {
                             // 登録成功
                             prefs.edit()
@@ -823,22 +827,23 @@ class WebViewActivity : AppCompatActivity() {
                                 .remove("registration_code")
                                 .apply()
 
-                            Log.w(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
+                            fileLog("SUCCESS: device_id=$deviceId saved")
 
                             runOnUiThread {
                                 binding.registrationOverlay.visibility = android.view.View.GONE
-                                binding.webView.loadUrl("$BASE_URL/")
+                                // ページロード前に localStorage をセット
                                 binding.webView.evaluateJavascript(
-                                    "window.__deviceOwnerActivated && window.__deviceOwnerActivated('$tenantId','$deviceId')",
+                                    "localStorage.setItem('alc_device_tenant_id','$tenantId');localStorage.setItem('alc_device_id','$deviceId');",
                                     null
                                 )
+                                binding.webView.loadUrl("$BASE_URL/")
                                 fetchDeviceSettingsAndAutoStart()
                             }
                             return@launch // 成功 — ループ終了
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Auto-registration attempt $attempt error: ${e.message}")
+                    fileLog("attempt $attempt error: ${e.message}")
                 }
 
                 // 指数バックオフ: 2s, 4s, 8s, 16s, 30s cap
