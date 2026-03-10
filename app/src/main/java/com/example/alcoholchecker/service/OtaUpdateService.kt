@@ -10,8 +10,10 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.IBinder
+import android.net.Uri
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
 import com.example.alcoholchecker.R
 import java.io.File
 import java.net.HttpURLConnection
@@ -115,8 +117,8 @@ class OtaUpdateService : Service() {
             if (isDeviceOwner()) {
                 installPackageSilently(apkFile, versionCode, versionName)
             } else {
-                Log.w(TAG, "Not device owner, cannot install silently")
-                showErrorNotification("Device Owner ではないため自動更新できません")
+                Log.d(TAG, "Not device owner, prompting user to install")
+                promptUserInstall(apkFile)
             }
         } finally {
             connection.disconnect()
@@ -162,6 +164,48 @@ class OtaUpdateService : Service() {
         } finally {
             // APK ファイルをクリーンアップ
             apkFile.delete()
+        }
+    }
+
+    private fun promptUserInstall(apkFile: File) {
+        // cache から files ディレクトリにコピー (FileProvider で公開するため)
+        val installFile = File(getExternalFilesDir(null), "update.apk")
+        apkFile.copyTo(installFile, overwrite = true)
+        apkFile.delete()
+
+        val apkUri: Uri = FileProvider.getUriForFile(
+            this,
+            "${packageName}.fileprovider",
+            installFile
+        )
+
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        // 通知タップでインストーラーを起動
+        val pi = PendingIntent.getActivity(
+            this, 0, installIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("アプリ更新")
+            .setContentText("タップしてインストールしてください")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .build()
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID, notification)
+
+        // 直接インストーラーも起動
+        try {
+            startActivity(installIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not start installer activity: ${e.message}")
         }
     }
 
