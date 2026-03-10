@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.PersistableBundle
 import android.util.Log
+import java.io.File
 
 class GetProvisioningModeActivity : Activity() {
     companion object {
@@ -13,9 +14,17 @@ class GetProvisioningModeActivity : Activity() {
         private const val PREFS_NAME = "device_settings"
     }
 
+    private fun fileLog(msg: String) {
+        try {
+            val file = File(filesDir, "provisioning.log")
+            file.appendText("${System.currentTimeMillis()} [GetProvisioningMode] $msg\n")
+        } catch (_: Exception) {}
+        Log.w(TAG, msg)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.w(TAG, "GET_PROVISIONING_MODE called")
+        fileLog("GET_PROVISIONING_MODE called")
 
         // admin extras bundle を読み取って SharedPreferences に保存
         val extras = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -29,13 +38,13 @@ class GetProvisioningModeActivity : Activity() {
                 DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE
             )
         }
-        Log.w(TAG, "GetProvisioningMode extras bundle: $extras")
+        fileLog("extras bundle: $extras")
 
         if (extras != null) {
             val registrationCode = extras.getString("registration_code")
             val deviceName = extras.getString("device_name")
             val isDevDevice = extras.getString("is_dev_device")?.toBoolean() ?: false
-            Log.w(TAG, "GetProvisioningMode extras: registration_code=${registrationCode != null}, device_name=$deviceName, is_dev_device=$isDevDevice")
+            fileLog("registration_code=${registrationCode != null}, device_name=$deviceName, is_dev_device=$isDevDevice")
 
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .edit()
@@ -45,6 +54,9 @@ class GetProvisioningModeActivity : Activity() {
                     deviceName?.let { putString("device_name", it) }
                 }
                 .apply()
+            fileLog("SharedPreferences saved")
+        } else {
+            fileLog("extras bundle is NULL — no registration_code to save")
         }
 
         val resultIntent = Intent()

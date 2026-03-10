@@ -58,6 +58,14 @@ import kotlinx.coroutines.withContext
 
 class WebViewActivity : AppCompatActivity() {
 
+    private fun fileLog(msg: String) {
+        try {
+            val file = java.io.File(filesDir, "provisioning.log")
+            file.appendText("${System.currentTimeMillis()} [WebViewActivity] $msg\n")
+        } catch (_: Exception) {}
+        Log.w(TAG, msg)
+    }
+
     private lateinit var binding: ActivityWebviewBinding
 
     private var nfcAdapter: NfcAdapter? = null
@@ -193,6 +201,7 @@ class WebViewActivity : AppCompatActivity() {
         requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
 
+        fileLog("isDeviceOwner=$isDeviceOwner, needsRegistration=${isDeviceOwnerNeedingRegistration()}")
         if (isDeviceOwnerNeedingRegistration()) {
             // Device Owner 未登録: オーバーレイ表示 → リトライ → 成功後に WebView ロード
             autoRegisterDeviceOwner()
@@ -740,8 +749,9 @@ class WebViewActivity : AppCompatActivity() {
 
         // プロビジョニング extras から registration_code を取得
         val registrationCode = prefs.getString("registration_code", null)
+        fileLog("autoRegisterDeviceOwner: registration_code=${registrationCode != null}")
         if (registrationCode.isNullOrEmpty()) {
-            Log.w(TAG, "Device Owner but no registration_code — loading WebView as fallback")
+            fileLog("No registration_code — loading WebView as fallback")
             binding.webView.loadUrl("$BASE_URL/")
             fetchDeviceSettingsAndAutoStart()
             return
@@ -753,7 +763,7 @@ class WebViewActivity : AppCompatActivity() {
         binding.registrationOverlay.visibility = android.view.View.VISIBLE
         binding.registrationStatusText.text = "デバイス登録中..."
 
-        Log.w(TAG, "Device Owner auto-registration starting...")
+        fileLog("Device Owner auto-registration starting with code=${registrationCode.take(4)}...")
 
         lifecycleScope.launch {
             var attempt = 0
