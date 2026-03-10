@@ -13,11 +13,11 @@ class PolicyComplianceActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "ADMIN_POLICY_COMPLIANCE called")
-        Log.i(TAG, "Intent action: ${intent.action}")
-        Log.i(TAG, "Intent extras keys: ${intent.extras?.keySet()?.toList()}")
+        Log.w(TAG, "ADMIN_POLICY_COMPLIANCE called")
+        Log.w(TAG, "Intent action: ${intent.action}")
+        Log.w(TAG, "Intent extras keys: ${intent.extras?.keySet()?.toList()}")
         intent.extras?.keySet()?.forEach { key ->
-            Log.i(TAG, "Intent extra [$key] = ${intent.extras?.get(key)} (type: ${intent.extras?.get(key)?.javaClass?.name})")
+            Log.w(TAG, "Intent extra [$key] = ${intent.extras?.get(key)} (type: ${intent.extras?.get(key)?.javaClass?.name})")
         }
 
         // admin extras bundle を読み取る
@@ -32,13 +32,13 @@ class PolicyComplianceActivity : Activity() {
                 android.app.admin.DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE
             )
         }
-        Log.i(TAG, "PolicyCompliance extras bundle: $extras")
+        Log.w(TAG, "PolicyCompliance extras bundle: $extras")
 
         if (extras != null) {
             val registrationCode = extras.getString("registration_code")
             val deviceName = extras.getString("device_name")
             val isDevDevice = extras.getString("is_dev_device")?.toBoolean() ?: false
-            Log.i(TAG, "PolicyCompliance extras: registration_code=${registrationCode != null}, device_name=$deviceName, is_dev_device=$isDevDevice")
+            Log.w(TAG, "PolicyCompliance extras: registration_code=${registrationCode != null}, device_name=$deviceName, is_dev_device=$isDevDevice")
 
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .edit()

@@ -722,7 +722,7 @@ class WebViewActivity : AppCompatActivity() {
                 componentName, packageName, perm,
                 android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
             )
-            Log.i(TAG, "Auto-grant $perm: $granted")
+            Log.w(TAG, "Auto-grant $perm: $granted")
         }
         return true
     }
@@ -741,7 +741,7 @@ class WebViewActivity : AppCompatActivity() {
         // プロビジョニング extras から registration_code を取得
         val registrationCode = prefs.getString("registration_code", null)
         if (registrationCode.isNullOrEmpty()) {
-            Log.i(TAG, "Device Owner but no registration_code — loading WebView as fallback")
+            Log.w(TAG, "Device Owner but no registration_code — loading WebView as fallback")
             binding.webView.loadUrl("$BASE_URL/")
             fetchDeviceSettingsAndAutoStart()
             return
@@ -753,7 +753,7 @@ class WebViewActivity : AppCompatActivity() {
         binding.registrationOverlay.visibility = android.view.View.VISIBLE
         binding.registrationStatusText.text = "デバイス登録中..."
 
-        Log.i(TAG, "Device Owner auto-registration starting...")
+        Log.w(TAG, "Device Owner auto-registration starting...")
 
         lifecycleScope.launch {
             var attempt = 0
@@ -762,7 +762,7 @@ class WebViewActivity : AppCompatActivity() {
 
             while (attempt < maxAttempts) {
                 attempt++
-                Log.i(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
+                Log.w(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
                 runOnUiThread {
                     binding.registrationStatusText.text = "デバイス登録中... ($attempt/$maxAttempts)"
                 }
@@ -805,7 +805,7 @@ class WebViewActivity : AppCompatActivity() {
                                 .remove("registration_code")
                                 .apply()
 
-                            Log.i(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
+                            Log.w(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
 
                             runOnUiThread {
                                 binding.registrationOverlay.visibility = android.view.View.GONE
@@ -845,7 +845,7 @@ class WebViewActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
         val deviceId = prefs.getString("device_id", null)
         if (deviceId.isNullOrEmpty()) {
-            Log.i(TAG, "No device_id — skipping auto-start")
+            Log.w(TAG, "No device_id — skipping auto-start")
             return
         }
 
