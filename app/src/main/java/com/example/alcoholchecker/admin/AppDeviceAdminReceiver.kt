@@ -15,15 +15,15 @@ class AppDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onEnabled(context: Context, intent: Intent) {
-        Log.d(TAG, "Device admin enabled")
+        Log.i(TAG, "Device admin enabled")
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
-        Log.d(TAG, "Device admin disabled")
+        Log.i(TAG, "Device admin disabled")
     }
 
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
-        Log.d(TAG, "Profile provisioning complete")
+        Log.i(TAG, "Profile provisioning complete")
 
         // QR プロビジョニング時の admin extras を読み取る
         val extras = intent.getBundleExtra(
@@ -32,7 +32,7 @@ class AppDeviceAdminReceiver : DeviceAdminReceiver() {
         val isDevDevice = extras?.getString("is_dev_device")?.toBoolean() ?: false
         val registrationCode = extras?.getString("registration_code")
         val deviceName = extras?.getString("device_name")
-        Log.d(TAG, "Provisioning extras: is_dev_device=$isDevDevice, registration_code=${registrationCode != null}, device_name=$deviceName")
+        Log.i(TAG, "Provisioning extras: is_dev_device=$isDevDevice, registration_code=${registrationCode != null}, device_name=$deviceName")
 
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()

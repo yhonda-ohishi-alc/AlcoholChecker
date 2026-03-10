@@ -113,7 +113,7 @@ class WebViewActivity : AppCompatActivity() {
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        Log.d(TAG, "RECORD_AUDIO permission granted: $granted")
+        Log.i(TAG, "RECORD_AUDIO permission granted: $granted")
         // Proceed with screen capture regardless of mic permission
         launchScreenCaptureIntent()
     }
@@ -121,7 +121,7 @@ class WebViewActivity : AppCompatActivity() {
     private val phonePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        Log.d(TAG, "Phone permission granted: $granted")
+        Log.i(TAG, "Phone permission granted: $granted")
         if (granted) {
             val number = getPhoneNumberInternal()
             if (number.isNotEmpty()) {
@@ -437,7 +437,7 @@ class WebViewActivity : AppCompatActivity() {
 
         if (intent.action == ACTION_NAVIGATE_TENKO) {
             val roomId = intent.getStringExtra(EXTRA_ROOM_ID)
-            Log.d(TAG, "Navigating to remote tenko: roomId=$roomId")
+            Log.i(TAG, "Navigating to remote tenko: roomId=$roomId")
             navigateToRemoteTenko(roomId)
             return
         }
@@ -524,7 +524,7 @@ class WebViewActivity : AppCompatActivity() {
                 nfcReader.readCard(tag)
             }
 
-            Log.d(TAG, "NFC card read: type=${cardData.cardType}, id=${cardData.cardId}")
+            Log.i(TAG, "NFC card read: type=${cardData.cardType}, id=${cardData.cardId}")
 
             val server = nfcBridgeServer ?: return@launch
 
@@ -661,7 +661,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun stopScreenCapture() {
         stopService(Intent(this, ScreenCaptureService::class.java))
-        Log.d(TAG, "Screen capture stopped")
+        Log.i(TAG, "Screen capture stopped")
     }
 
     @SuppressLint("HardwareIds")
@@ -722,7 +722,7 @@ class WebViewActivity : AppCompatActivity() {
                 componentName, packageName, perm,
                 android.app.admin.DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED
             )
-            Log.d(TAG, "Auto-grant $perm: $granted")
+            Log.i(TAG, "Auto-grant $perm: $granted")
         }
         return true
     }
@@ -741,7 +741,7 @@ class WebViewActivity : AppCompatActivity() {
         // プロビジョニング extras から registration_code を取得
         val registrationCode = prefs.getString("registration_code", null)
         if (registrationCode.isNullOrEmpty()) {
-            Log.d(TAG, "Device Owner but no registration_code — loading WebView as fallback")
+            Log.i(TAG, "Device Owner but no registration_code — loading WebView as fallback")
             binding.webView.loadUrl("$BASE_URL/")
             fetchDeviceSettingsAndAutoStart()
             return
@@ -753,7 +753,7 @@ class WebViewActivity : AppCompatActivity() {
         binding.registrationOverlay.visibility = android.view.View.VISIBLE
         binding.registrationStatusText.text = "デバイス登録中..."
 
-        Log.d(TAG, "Device Owner auto-registration starting...")
+        Log.i(TAG, "Device Owner auto-registration starting...")
 
         lifecycleScope.launch {
             var attempt = 0
@@ -762,7 +762,7 @@ class WebViewActivity : AppCompatActivity() {
 
             while (attempt < maxAttempts) {
                 attempt++
-                Log.d(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
+                Log.i(TAG, "Device Owner auto-registration attempt $attempt/$maxAttempts")
                 runOnUiThread {
                     binding.registrationStatusText.text = "デバイス登録中... ($attempt/$maxAttempts)"
                 }
@@ -805,7 +805,7 @@ class WebViewActivity : AppCompatActivity() {
                                 .remove("registration_code")
                                 .apply()
 
-                            Log.d(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
+                            Log.i(TAG, "Device Owner auto-registered: device_id=$deviceId, tenant_id=$tenantId")
 
                             runOnUiThread {
                                 binding.registrationOverlay.visibility = android.view.View.GONE
@@ -845,7 +845,7 @@ class WebViewActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
         val deviceId = prefs.getString("device_id", null)
         if (deviceId.isNullOrEmpty()) {
-            Log.d(TAG, "No device_id — skipping auto-start")
+            Log.i(TAG, "No device_id — skipping auto-start")
             return
         }
 
@@ -887,19 +887,19 @@ class WebViewActivity : AppCompatActivity() {
                 if (status == "active") {
                     // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                     runOnUiThread { startRoomWatcher() }
-                    Log.d(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
+                    Log.i(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
                     // FCM トークン登録
                     registerFcmTokenIfNeeded(deviceId)
                     // バージョン報告
                     reportVersionToBackend(deviceId)
                 } else {
-                    Log.d(TAG, "status=$status — not starting RoomWatcher")
+                    Log.i(TAG, "status=$status — not starting RoomWatcher")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch device settings: ${e.message}")
                 // オフラインフォールバック: 常に接続
                 runOnUiThread { startRoomWatcher() }
-                Log.d(TAG, "Auto-started RoomWatcher from fallback")
+                Log.i(TAG, "Auto-started RoomWatcher from fallback")
             }
         }
     }
@@ -951,7 +951,7 @@ class WebViewActivity : AppCompatActivity() {
                 conn.outputStream.use { it.write(body.toByteArray()) }
 
                 val code = conn.responseCode
-                Log.d(TAG, "Version reported: HTTP $code (v$versionName/$versionCode, owner=$isDeviceOwner, dev=$isDevDevice)")
+                Log.i(TAG, "Version reported: HTTP $code (v$versionName/$versionCode, owner=$isDeviceOwner, dev=$isDevDevice)")
                 conn.disconnect()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to report version: ${e.message}")
@@ -963,7 +963,7 @@ class WebViewActivity : AppCompatActivity() {
         if (roomWatcher != null) return
         roomWatcher = RoomWatcher(this, SIGNALING_URL).apply {
             onNewRoom = { roomId ->
-                Log.d(TAG, "New tenko room: $roomId → showing incoming call screen")
+                Log.i(TAG, "New tenko room: $roomId → showing incoming call screen")
                 val intent = Intent(this@WebViewActivity, IncomingCallActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, "ドライバー点呼要求")
@@ -972,7 +972,7 @@ class WebViewActivity : AppCompatActivity() {
                 startActivity(intent)
             }
             onRoomAnswered = { roomId ->
-                Log.d(TAG, "Room answered: $roomId → dismissing incoming call if showing")
+                Log.i(TAG, "Room answered: $roomId → dismissing incoming call if showing")
                 IncomingCallActivity.dismissForRoom(roomId)
             }
             onConnectionStateChanged = { connected ->
@@ -985,19 +985,19 @@ class WebViewActivity : AppCompatActivity() {
             }
             start()
         }
-        Log.d(TAG, "RoomWatcher started")
+        Log.i(TAG, "RoomWatcher started")
     }
 
     private fun stopRoomWatcher() {
         roomWatcher?.stop()
         roomWatcher = null
-        Log.d(TAG, "RoomWatcher stopped")
+        Log.i(TAG, "RoomWatcher stopped")
     }
 
     inner class AndroidBridge {
         @JavascriptInterface
         fun setCallEnabled(enabled: Boolean) {
-            Log.d(TAG, "setCallEnabled: $enabled")
+            Log.i(TAG, "setCallEnabled: $enabled")
             runOnUiThread {
                 if (enabled) {
                     startRoomWatcher()
@@ -1027,7 +1027,7 @@ class WebViewActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun setDeviceId(deviceId: String) {
-            Log.d(TAG, "setDeviceId: $deviceId")
+            Log.i(TAG, "setDeviceId: $deviceId")
             getSharedPreferences("device_settings", MODE_PRIVATE)
                 .edit()
                 .putString("device_id", deviceId)
@@ -1058,14 +1058,14 @@ class WebViewActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun setMicMuted(muted: Boolean) {
-            Log.d(TAG, "setMicMuted: $muted")
+            Log.i(TAG, "setMicMuted: $muted")
             val audioManager = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
             audioManager.isMicrophoneMute = muted
         }
 
         @JavascriptInterface
         fun requestScreenCapture() {
-            Log.d(TAG, "requestScreenCapture")
+            Log.i(TAG, "requestScreenCapture")
             runOnUiThread {
                 this@WebViewActivity.requestScreenCapture()
             }
@@ -1073,7 +1073,7 @@ class WebViewActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun stopScreenCapture() {
-            Log.d(TAG, "stopScreenCapture")
+            Log.i(TAG, "stopScreenCapture")
             runOnUiThread {
                 this@WebViewActivity.stopScreenCapture()
             }
@@ -1091,7 +1091,7 @@ class WebViewActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun setCallSchedule(json: String) {
-            Log.d(TAG, "setCallSchedule: $json")
+            Log.i(TAG, "setCallSchedule: $json")
             getSharedPreferences("call_settings", MODE_PRIVATE)
                 .edit()
                 .putString("schedule", json)
@@ -1143,7 +1143,7 @@ class WebViewActivity : AppCompatActivity() {
         val executor = ContextCompat.getMainExecutor(this)
         val callback = object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                Log.d(TAG, "Biometric auth succeeded")
+                Log.i(TAG, "Biometric auth succeeded")
                 binding.webView.evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('fingerprint-result', { detail: { success: true } }))",
                     null
