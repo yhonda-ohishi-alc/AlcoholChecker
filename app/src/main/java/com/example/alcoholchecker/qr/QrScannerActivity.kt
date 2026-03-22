@@ -31,6 +31,7 @@ class QrScannerActivity : AppCompatActivity() {
 
     private var scanned = false
     private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var previewView: PreviewView
 
     private val cameraPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -43,7 +44,7 @@ class QrScannerActivity : AppCompatActivity() {
 
         // レイアウトをコードで作成 (XML不要)
         val root = FrameLayout(this)
-        val previewView = PreviewView(this).apply {
+        previewView = PreviewView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -83,9 +84,6 @@ class QrScannerActivity : AppCompatActivity() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
-
-            val previewView = (window.decorView as FrameLayout)
-                .getChildAt(0).let { (it as FrameLayout).getChildAt(0) as PreviewView }
 
             val preview = Preview.Builder().build().also {
                 it.surfaceProvider = previewView.surfaceProvider
