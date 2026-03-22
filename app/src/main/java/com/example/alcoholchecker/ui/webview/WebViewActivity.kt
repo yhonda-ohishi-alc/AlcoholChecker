@@ -1133,6 +1133,7 @@ class WebViewActivity : AppCompatActivity() {
             getSharedPreferences("device_settings", MODE_PRIVATE)
                 .edit()
                 .putString("device_id", deviceId)
+                .remove("fcm_token_registered")  // 新デバイスにFCMトークンを再登録させる
                 .apply()
             // デバイス登録直後に着信設定を取得してRoomWatcherを起動
             runOnUiThread { fetchDeviceSettingsAndAutoStart() }
