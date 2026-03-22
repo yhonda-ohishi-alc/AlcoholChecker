@@ -172,11 +172,18 @@ class WebViewActivity : AppCompatActivity() {
         private const val API_URL = "https://alc-app.m-tama-ramu.workers.dev"
         const val ACTION_NAVIGATE_TENKO = "com.example.alcoholchecker.NAVIGATE_TENKO"
         const val EXTRA_ROOM_ID = "extra_room_id"
+
+        /** FCM settings_changed から呼ばれる: 設定を再取得して RoomWatcher/WatchdogService を制御 */
+        var activeInstance: WebViewActivity? = null
+        fun refreshSettingsFromFcm() {
+            activeInstance?.fetchDeviceSettingsAndAutoStart()
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        activeInstance = this
         binding = ActivityWebviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -417,6 +424,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (activeInstance === this) activeInstance = null
         super.onDestroy()
         bleDeviceManager?.destroy()
         usbSerialManager?.destroy()

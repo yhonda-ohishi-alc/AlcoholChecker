@@ -37,6 +37,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val data = message.data
         Log.w(TAG, "FCM received: type=${data["type"]}")
 
+        // settings_changed は再接続せずに設定変更を処理
+        if (data["type"] == "settings_changed") {
+            Log.d(TAG, "Settings changed — re-fetching device settings")
+            handleSettingsChanged()
+            return
+        }
+
         // FCM が届いた = WebSocket が切れている可能性 → 即座に再接続を試行
         val watcher = RoomWatcher.activeInstance
         if (watcher != null && !watcher.isConnected) {
@@ -48,12 +55,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 action = WatchdogService.ACTION_START_ROOM_WATCHER
             }
             startForegroundService(intent)
-        }
-
-        if (data["type"] == "settings_changed") {
-            Log.d(TAG, "Settings changed — re-fetching device settings")
-            handleSettingsChanged()
-            return
         }
 
         if (data["type"] == "app_update") {
@@ -120,6 +121,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun handleSettingsChanged() {
+        // WebViewActivity が生きていれば fetchDeviceSettingsAndAutoStart に委譲
+        // (RoomWatcher停止 + WatchdogService停止 + 状態報告 すべて処理される)
+        val activity = com.example.alcoholchecker.ui.webview.WebViewActivity.activeInstance
+        if (activity != null) {
+            Log.d(TAG, "settings_changed: delegating to WebViewActivity")
+            activity.runOnUiThread {
+                com.example.alcoholchecker.ui.webview.WebViewActivity.refreshSettingsFromFcm()
+            }
+            return
+        }
+
+        // WebViewActivity が無い場合 (バックグラウンド) はここで処理
         CoroutineScope(Dispatchers.IO).launch {
             val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
             val deviceId = prefs.getString("device_id", null)
@@ -147,13 +160,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
                 val shouldRun = status == "active" && alwaysOn
                 if (!shouldRun) {
-                    // WatchdogService を停止
                     Log.d(TAG, "settings_changed: always_on=$alwaysOn status=$status — stopping WatchdogService")
                     val intent = Intent(this@MyFirebaseMessagingService, WatchdogService::class.java)
                     stopService(intent)
                 }
 
-                // 状態をバックエンドに報告
                 reportWatchdogState(deviceId, shouldRun)
             } catch (e: Exception) {
                 Log.e(TAG, "handleSettingsChanged failed", e)
