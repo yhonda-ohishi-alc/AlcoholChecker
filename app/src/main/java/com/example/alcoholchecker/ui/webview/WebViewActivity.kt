@@ -198,7 +198,10 @@ class WebViewActivity : AppCompatActivity() {
         startHeartbeat()
         startBridgeHealthCheck()
         val isDeviceOwner = autoGrantPermissionsIfDeviceOwner()
-        if (!isDeviceOwner) {
+        val hasDeviceId = getSharedPreferences("device_settings", MODE_PRIVATE)
+            .getString("device_id", null) != null
+        if (!isDeviceOwner && hasDeviceId) {
+            // 未登録端末ではオーバーレイ権限を要求しない（登録フロー中断防止）
             requestOverlayPermission()
         }
         requestCameraPermissionIfNeeded()
@@ -1100,7 +1103,11 @@ class WebViewActivity : AppCompatActivity() {
                 .putString("device_id", deviceId)
                 .apply()
             // デバイス登録直後に着信設定を取得してRoomWatcherを起動
-            runOnUiThread { fetchDeviceSettingsAndAutoStart() }
+            runOnUiThread {
+                fetchDeviceSettingsAndAutoStart()
+                // 登録完了後にオーバーレイ権限を要求
+                requestOverlayPermission()
+            }
         }
 
         @JavascriptInterface
