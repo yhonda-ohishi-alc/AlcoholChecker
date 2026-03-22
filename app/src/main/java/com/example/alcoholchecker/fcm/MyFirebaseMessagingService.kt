@@ -50,6 +50,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             startForegroundService(intent)
         }
 
+        if (data["type"] == "settings_changed") {
+            Log.d(TAG, "Settings changed — re-fetching device settings")
+            handleSettingsChanged()
+            return
+        }
+
         if (data["type"] == "app_update") {
             handleAppUpdate(data)
             return
@@ -111,6 +117,67 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             putExtra(IncomingCallActivity.EXTRA_ROOM_ID, roomId)
         }
         startActivity(intent)
+    }
+
+    private fun handleSettingsChanged() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+            val deviceId = prefs.getString("device_id", null)
+            if (deviceId.isNullOrEmpty()) return@launch
+
+            try {
+                val response = java.net.URL("$API_URL/api/devices/settings/$deviceId")
+                    .openConnection().let { conn ->
+                        conn as java.net.HttpURLConnection
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        try {
+                            if (conn.responseCode != 200) return@launch
+                            conn.inputStream.bufferedReader().readText()
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }
+
+                val json = org.json.JSONObject(response)
+                val alwaysOn = json.optBoolean("always_on", true)
+                val status = json.optString("status", "")
+
+                prefs.edit().putBoolean("always_on", alwaysOn).apply()
+
+                val shouldRun = status == "active" && alwaysOn
+                if (!shouldRun) {
+                    // WatchdogService を停止
+                    Log.d(TAG, "settings_changed: always_on=$alwaysOn status=$status — stopping WatchdogService")
+                    val intent = Intent(this@MyFirebaseMessagingService, WatchdogService::class.java)
+                    stopService(intent)
+                }
+
+                // 状態をバックエンドに報告
+                reportWatchdogState(deviceId, shouldRun)
+            } catch (e: Exception) {
+                Log.e(TAG, "handleSettingsChanged failed", e)
+            }
+        }
+    }
+
+    private fun reportWatchdogState(deviceId: String, running: Boolean) {
+        try {
+            val url = java.net.URL("$API_URL/api/devices/report-watchdog")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "PUT"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.doOutput = true
+            val body = """{"device_id":"$deviceId","running":$running}"""
+            conn.outputStream.use { it.write(body.toByteArray()) }
+            val code = conn.responseCode
+            Log.d(TAG, "reportWatchdogState: running=$running HTTP $code")
+            conn.disconnect()
+        } catch (e: Exception) {
+            Log.e(TAG, "reportWatchdogState failed", e)
+        }
     }
 
     private fun handleAppUpdate(data: Map<String, String>) {

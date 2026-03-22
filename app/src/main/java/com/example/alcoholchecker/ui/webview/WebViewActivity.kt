@@ -918,7 +918,8 @@ class WebViewActivity : AppCompatActivity() {
                     .putString("schedule", callSchedule.toString())
                     .apply()
 
-                if (status == "active" && alwaysOn) {
+                val shouldRun = status == "active" && alwaysOn
+                if (shouldRun) {
                     // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                     runOnUiThread { startRoomWatcher() }
                     Log.i(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, always_on=$alwaysOn, filtering is server-side)")
@@ -933,6 +934,8 @@ class WebViewActivity : AppCompatActivity() {
                 } else {
                     Log.i(TAG, "status=$status — not starting RoomWatcher")
                 }
+                // Watchdog状態をバックエンドに報告
+                reportWatchdogState(deviceId, shouldRun)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch device settings: ${e.message}")
                 // オフラインフォールバック: キャッシュの always_on を参照
@@ -963,6 +966,27 @@ class WebViewActivity : AppCompatActivity() {
             .addOnFailureListener { e ->
                 Log.w(TAG, "Failed to get FCM token: ${e.message}")
             }
+    }
+
+    private fun reportWatchdogState(deviceId: String, running: Boolean) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("$API_URL/api/devices/report-watchdog")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "PUT"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                val body = """{"device_id":"$deviceId","running":$running}"""
+                conn.outputStream.use { it.write(body.toByteArray()) }
+                val code = conn.responseCode
+                Log.i(TAG, "reportWatchdogState: running=$running HTTP $code")
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.w(TAG, "reportWatchdogState failed: ${e.message}")
+            }
+        }
     }
 
     private fun reportVersionToBackend(deviceId: String) {
