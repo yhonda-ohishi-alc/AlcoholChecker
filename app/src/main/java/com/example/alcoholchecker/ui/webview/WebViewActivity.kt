@@ -1069,6 +1069,21 @@ class WebViewActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun setManagerId(managerId: String) {
+            Log.i(TAG, "setManagerId: $managerId")
+            getSharedPreferences("device_settings", MODE_PRIVATE)
+                .edit()
+                .putString("manager_id", managerId)
+                .apply()
+        }
+
+        @JavascriptInterface
+        fun getManagerId(): String {
+            return getSharedPreferences("device_settings", MODE_PRIVATE)
+                .getString("manager_id", "") ?: ""
+        }
+
+        @JavascriptInterface
         fun isFingerprintAvailable(): Boolean {
             val biometricManager = BiometricManager.from(this@WebViewActivity)
             return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
