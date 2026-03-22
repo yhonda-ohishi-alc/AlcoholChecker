@@ -69,15 +69,28 @@ class WatchdogService : Service() {
             }
         }
 
+        // always_on チェック (管理画面から OFF にされた場合は停止)
+        val prefs = getSharedPreferences("device_settings", MODE_PRIVATE)
+        val cachedAlwaysOn = prefs.getBoolean("always_on", true)
+
         // START_STICKY再起動時 (intent == null) → アプリ復帰 + RoomWatcher着信待機
         if (intent == null) {
             Log.w(TAG, "Restarted by START_STICKY")
+            if (!cachedAlwaysOn) {
+                Log.d(TAG, "always_on=false — stopping after START_STICKY restart")
+                stopSelf()
+                return START_NOT_STICKY
+            }
             relaunchActivity()
             startRoomWatcher()
         }
 
         // FCM から RoomWatcher 起動要求
         if (intent?.action == ACTION_START_ROOM_WATCHER) {
+            if (!cachedAlwaysOn) {
+                Log.d(TAG, "always_on=false — ignoring FCM RoomWatcher request")
+                return START_STICKY
+            }
             Log.d(TAG, "RoomWatcher start requested via FCM")
             startRoomWatcher()
         }
@@ -133,8 +146,12 @@ class WatchdogService : Service() {
                 val json = org.json.JSONObject(response)
                 val callEnabled = json.optBoolean("call_enabled", false)
                 val status = json.optString("status", "")
+                val alwaysOn = json.optBoolean("always_on", true)
 
-                prefs.edit().putBoolean("call_enabled", callEnabled).apply()
+                prefs.edit()
+                    .putBoolean("call_enabled", callEnabled)
+                    .putBoolean("always_on", alwaysOn)
+                    .apply()
 
                 // スケジュールを SharedPreferences に保存 (enabled を call_enabled に同期)
                 val callSchedule = json.optJSONObject("call_schedule") ?: org.json.JSONObject()
@@ -142,16 +159,23 @@ class WatchdogService : Service() {
                 getSharedPreferences("call_settings", MODE_PRIVATE)
                     .edit().putString("schedule", callSchedule.toString()).apply()
 
-                if (status != "active") {
-                    Log.d(TAG, "status=$status — not starting RoomWatcher")
+                if (status != "active" || !alwaysOn) {
+                    Log.d(TAG, "status=$status always_on=$alwaysOn — stopping service")
+                    stopSelf()
                     return@launch
                 }
 
                 // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                 startRoomWatcherInternal()
-                Log.d(TAG, "Started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
+                Log.d(TAG, "Started RoomWatcher (call_enabled=$callEnabled, always_on=$alwaysOn, filtering is server-side)")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch settings, fallback: ${e.message}")
+                val cachedAlwaysOn = prefs.getBoolean("always_on", true)
+                if (!cachedAlwaysOn) {
+                    Log.d(TAG, "Offline: cached always_on=false — stopping service")
+                    stopSelf()
+                    return@launch
+                }
                 startRoomWatcherInternal()
             }
         }

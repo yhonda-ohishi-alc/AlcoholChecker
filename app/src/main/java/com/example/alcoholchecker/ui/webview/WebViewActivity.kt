@@ -224,6 +224,12 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun startWatchdogService() {
+        val cachedAlwaysOn = getSharedPreferences("device_settings", MODE_PRIVATE)
+            .getBoolean("always_on", true)
+        if (!cachedAlwaysOn) {
+            Log.i(TAG, "Skipping WatchdogService (cached always_on=false)")
+            return
+        }
         val intent = Intent(this, WatchdogService::class.java)
         startForegroundService(intent)
     }
@@ -896,10 +902,12 @@ class WebViewActivity : AppCompatActivity() {
                 val json = org.json.JSONObject(response)
                 val callEnabled = json.optBoolean("call_enabled", false)
                 val status = json.optString("status", "")
+                val alwaysOn = json.optBoolean("always_on", true)
 
                 // キャッシュ保存 (オフラインフォールバック用)
                 prefs.edit()
                     .putBoolean("call_enabled", callEnabled)
+                    .putBoolean("always_on", alwaysOn)
                     .apply()
 
                 // スケジュールを SharedPreferences に保存 (enabled を call_enabled に同期)
@@ -910,22 +918,31 @@ class WebViewActivity : AppCompatActivity() {
                     .putString("schedule", callSchedule.toString())
                     .apply()
 
-                if (status == "active") {
+                if (status == "active" && alwaysOn) {
                     // 常時接続 (着信ON/OFFはサーバー側 shouldNotify() で制御、テスト着信は常に通る)
                     runOnUiThread { startRoomWatcher() }
-                    Log.i(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, filtering is server-side)")
+                    Log.i(TAG, "Auto-started RoomWatcher (call_enabled=$callEnabled, always_on=$alwaysOn, filtering is server-side)")
                     // FCM トークン登録
                     registerFcmTokenIfNeeded(deviceId)
                     // バージョン報告
                     reportVersionToBackend(deviceId)
+                } else if (status == "active" && !alwaysOn) {
+                    Log.i(TAG, "always_on=false — stopping background services")
+                    runOnUiThread { stopRoomWatcher() }
+                    stopService(Intent(this@WebViewActivity, WatchdogService::class.java))
                 } else {
                     Log.i(TAG, "status=$status — not starting RoomWatcher")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch device settings: ${e.message}")
-                // オフラインフォールバック: 常に接続
-                runOnUiThread { startRoomWatcher() }
-                Log.i(TAG, "Auto-started RoomWatcher from fallback")
+                // オフラインフォールバック: キャッシュの always_on を参照
+                val cachedAlwaysOn = prefs.getBoolean("always_on", true)
+                if (cachedAlwaysOn) {
+                    runOnUiThread { startRoomWatcher() }
+                    Log.i(TAG, "Auto-started RoomWatcher from fallback (cached always_on=true)")
+                } else {
+                    Log.i(TAG, "Skipping RoomWatcher from fallback (cached always_on=false)")
+                }
             }
         }
     }
