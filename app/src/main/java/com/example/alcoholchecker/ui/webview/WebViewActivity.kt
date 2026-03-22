@@ -144,6 +144,17 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private val qrScannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val qrValue = result.data?.getStringExtra(com.example.alcoholchecker.qr.QrScannerActivity.EXTRA_RESULT)
+        val escaped = qrValue?.replace("\\", "\\\\")?.replace("'", "\\'") ?: ""
+        binding.webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('qr-scanned', { detail: { value: '$escaped' } }))",
+            null
+        )
+    }
+
     private val screenCaptureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -1218,6 +1229,14 @@ class WebViewActivity : AppCompatActivity() {
                 info.versionCode
             }
             return """{"versionCode":$code,"versionName":"${info.versionName}"}"""
+        }
+
+        @JavascriptInterface
+        fun scanQrCode() {
+            runOnUiThread {
+                val intent = android.content.Intent(this@WebViewActivity, com.example.alcoholchecker.qr.QrScannerActivity::class.java)
+                qrScannerLauncher.launch(intent)
+            }
         }
 
         @JavascriptInterface

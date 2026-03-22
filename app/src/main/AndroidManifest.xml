@@ -88,6 +88,10 @@
             android:turnScreenOn="true"
             android:theme="@style/Theme.AlcoholChecker.NoActionBar" />
 
+        <activity
+            android:name=".qr.QrScannerActivity"
+            android:theme="@style/Theme.AlcoholChecker.NoActionBar" />
+
         <service
             android:name=".screencapture.ScreenCaptureService"
             android:foregroundServiceType="mediaProjection"
