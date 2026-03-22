@@ -144,6 +144,23 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private var qrPendingAfterPhonePermission = false
+
+    private val phonePermissionForQrLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // 許可/拒否に関わらずQRスキャナーを起動
+        if (qrPendingAfterPhonePermission) {
+            qrPendingAfterPhonePermission = false
+            launchQrScanner()
+        }
+    }
+
+    private fun launchQrScanner() {
+        val intent = Intent(this, com.example.alcoholchecker.qr.QrScannerActivity::class.java)
+        qrScannerLauncher.launch(intent)
+    }
+
     private val qrScannerLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -216,12 +233,8 @@ class WebViewActivity : AppCompatActivity() {
         startHeartbeat()
         startBridgeHealthCheck()
         val isDeviceOwner = autoGrantPermissionsIfDeviceOwner()
-        val hasDeviceId = getSharedPreferences("device_settings", MODE_PRIVATE)
-            .getString("device_id", null) != null
-        if (!isDeviceOwner && hasDeviceId) {
-            // 未登録端末ではオーバーレイ権限を要求しない（登録フロー中断防止）
-            requestOverlayPermission()
-        }
+        // Device Owner なら自動付与済み、それ以外はオーバーレイ権限を要求しない
+        // (サイドロードアプリは設定UIから有効にできないため)
         requestCameraPermissionIfNeeded()
         requestNotificationPermissionIfNeeded()
 
@@ -1122,11 +1135,7 @@ class WebViewActivity : AppCompatActivity() {
                 .putString("device_id", deviceId)
                 .apply()
             // デバイス登録直後に着信設定を取得してRoomWatcherを起動
-            runOnUiThread {
-                fetchDeviceSettingsAndAutoStart()
-                // 登録完了後にオーバーレイ権限を要求
-                requestOverlayPermission()
-            }
+            runOnUiThread { fetchDeviceSettingsAndAutoStart() }
         }
 
         @JavascriptInterface
@@ -1234,8 +1243,15 @@ class WebViewActivity : AppCompatActivity() {
         @JavascriptInterface
         fun scanQrCode() {
             runOnUiThread {
-                val intent = android.content.Intent(this@WebViewActivity, com.example.alcoholchecker.qr.QrScannerActivity::class.java)
-                qrScannerLauncher.launch(intent)
+                // 電話番号パーミッションを先に要求 (未許可の場合)
+                val phonePerm = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU)
+                    Manifest.permission.READ_PHONE_NUMBERS else Manifest.permission.READ_PHONE_STATE
+                if (ContextCompat.checkSelfPermission(this@WebViewActivity, phonePerm) != PackageManager.PERMISSION_GRANTED) {
+                    qrPendingAfterPhonePermission = true
+                    phonePermissionForQrLauncher.launch(phonePerm)
+                } else {
+                    launchQrScanner()
+                }
             }
         }
 
